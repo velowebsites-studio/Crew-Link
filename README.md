@@ -19,6 +19,11 @@ Firebase (Auth + Firestore) for realtime sync.
 - **Crew chat** — a shared chat room for the whole map.
 - **Meetup pins** — drop gas station / meetup / checkpoint / police-hazard
   pins that everyone can see.
+- **Real gas stations** — the gas pump button on the map queries
+  [OpenStreetMap's Overpass API](https://overpass-api.de/) for actual fuel
+  stations within 5 miles of you and drops them on the map live (not
+  stored in Firestore, refetched on demand). Coverage/accuracy depends on
+  OpenStreetMap's community data for your area.
 - **Race routes** — click "Draw Route" (or the route icon on the map),
   tap the map to lay down waypoints, then save it. Waypoints are snapped to
   actual roads via the [OSRM](https://project-osrm.org/) routing API (falls

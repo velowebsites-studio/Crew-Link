@@ -119,6 +119,9 @@
                 <button onclick="centerOnMe()" title="Center on my location" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-xl border border-slate-700 backdrop-blur transition flex items-center justify-center w-12 h-12">
                     <i class="fa-solid fa-location-crosshairs text-lg text-red-500"></i>
                 </button>
+                <button onclick="loadNearbyGasStations()" id="gas-stations-btn" title="Find Real Gas Stations Nearby" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-xl border border-slate-700 backdrop-blur transition flex items-center justify-center w-12 h-12">
+                    <i class="fa-solid fa-gas-pump text-lg text-amber-400"></i>
+                </button>
                 <button onclick="toggleDrawRoute()" id="draw-route-btn" title="Draw a Race Route" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-xl border border-slate-700 backdrop-blur transition flex items-center justify-center w-12 h-12">
                     <i class="fa-solid fa-route text-lg text-blue-400"></i>
                 </button>
@@ -377,6 +380,7 @@
         let drawingWaypointMarkers = [];
         let snappedRoutePoints = null;
         let snappedDistanceMiles = null;
+        let gasStationMarkers = [];
 
         let driverProfile = {
             name: "Racer " + Math.floor(Math.random() * 900 + 100),
@@ -1142,6 +1146,67 @@
 
         window.centerOnMe = function() {
             if (map && userLocation) map.setView([userLocation.lat, userLocation.lng], 16);
+        };
+
+        // Pulls real gas station locations from OpenStreetMap's free Overpass API,
+        // centered on the driver's current position. Community-sourced data, so
+        // coverage/accuracy varies by area.
+        window.loadNearbyGasStations = async function() {
+            if (!map || !userLocation) {
+                alert("Set your location first (allow GPS, or skip and drop a pin) before loading nearby gas stations.");
+                return;
+            }
+
+            const btn = document.getElementById('gas-stations-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+
+            const radiusMeters = 8000; // ~5 miles
+            const query = `[out:json][timeout:25];node["amenity"="fuel"](around:${radiusMeters},${userLocation.lat},${userLocation.lng});out body;`;
+            const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                if (!response.ok) throw new Error('Overpass request failed');
+                const data = await response.json();
+
+                gasStationMarkers.forEach(m => map.removeLayer(m));
+                gasStationMarkers = [];
+
+                const fuelIcon = L.divIcon({
+                    className: 'custom-gas-marker',
+                    html: `<div style="background-color: #eab308; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 8px #eab308; border: 2px solid white;"><i class="fa-solid fa-gas-pump text-white text-xs"></i></div>`,
+                    iconSize: [26, 26], iconAnchor: [13, 13]
+                });
+
+                const elements = data.elements || [];
+                elements.forEach(el => {
+                    if (el.type !== 'node') return;
+                    const name = (el.tags && (el.tags.name || el.tags.brand)) || 'Gas Station';
+                    const marker = L.marker([el.lat, el.lon], { icon: fuelIcon }).addTo(map)
+                        .bindPopup(`
+                            <div class="p-1 space-y-1">
+                                <div class="font-bold text-sm text-amber-400">${escapeHtml(name)}</div>
+                                <div class="text-[10px] text-slate-400">Real station &middot; via OpenStreetMap</div>
+                            </div>
+                        `, { className: 'custom-dark-popup' });
+                    gasStationMarkers.push(marker);
+                });
+
+                if (elements.length === 0) {
+                    alert("No gas stations found on OpenStreetMap within 5 miles. Coverage varies by area, or try again after moving closer to town.");
+                }
+            } catch (err) {
+                console.error("Error loading gas stations:", err);
+                alert("Couldn't load nearby gas stations right now. Try again in a moment.");
+            } finally {
+                clearTimeout(timeoutId);
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
         };
 
         window.switchTab = function(tabName) {
