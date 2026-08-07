@@ -372,7 +372,9 @@
         let watchId = null;
         let selectedColor = '#ef4444';
         let selectedRouteColor = '#3b82f6';
-        let userLocation = { lat: 34.0522, lng: -118.2437 }; // Default Los Angeles center
+        let userLocation = { lat: 38.30, lng: -92.44 }; // Default: center of Missouri
+        const MISSOURI_BOUNDS = L.latLngBounds([35.6, -96.2], [40.8, -88.8]);
+        const MISSOURI_MIN_ZOOM = 6;
         let clickedMapCoords = null;
         let isDrawingRoute = false;
         let drawingPoints = [];
@@ -405,8 +407,13 @@
                 map.setView([lat, lng], 15);
                 return;
             }
-            map = L.map('map', { zoomControl: false }).setView([lat, lng], 15);
-            
+            map = L.map('map', {
+                zoomControl: false,
+                maxBounds: MISSOURI_BOUNDS,
+                maxBoundsViscosity: 1.0,
+                minZoom: MISSOURI_MIN_ZOOM
+            }).setView([lat, lng], 15);
+
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                 attribution: '&copy; CARTO',
                 maxZoom: 19
