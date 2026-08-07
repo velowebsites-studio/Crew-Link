@@ -79,30 +79,30 @@
     </div>
 
     <!-- Top Navigation Bar -->
-    <header class="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between shrink-0 z-30">
-        <div class="flex items-center space-x-3">
-            <div class="bg-red-600 p-2 rounded-lg text-white font-bold text-lg flex items-center justify-center shadow-lg shadow-red-600/30">
+    <header class="bg-slate-900 border-b border-slate-800 px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between shrink-0 z-30 gap-2">
+        <div class="flex items-center space-x-2 sm:space-x-3 min-w-0">
+            <div class="bg-red-600 p-1.5 sm:p-2 rounded-lg text-white font-bold text-lg flex items-center justify-center shadow-lg shadow-red-600/30 shrink-0">
                 <i class="fa-solid fa-gauge-high"></i>
             </div>
-            <div>
-                <h1 class="font-extrabold text-lg tracking-wider text-white uppercase italic">Crew<span class="text-red-500">Link</span></h1>
-                <p class="text-xs text-slate-400">Live Racing & Cruise Tracker</p>
+            <div class="min-w-0">
+                <h1 class="font-extrabold text-base sm:text-lg tracking-wider text-white uppercase italic truncate">Crew<span class="text-red-500">Link</span></h1>
+                <p class="hidden sm:block text-xs text-slate-400">Live Racing & Cruise Tracker</p>
             </div>
         </div>
 
-        <div class="flex items-center space-x-3">
-            <button onclick="requestLiveLocation()" id="gps-status-btn" class="hidden sm:flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition">
-                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span id="gps-status-text">Enable GPS</span>
+        <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <button onclick="requestLiveLocation()" id="gps-status-btn" class="flex items-center space-x-1.5 text-xs px-2 sm:px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition">
+                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                <span id="gps-status-text" class="hidden sm:inline">Enable GPS</span>
             </button>
-            
-            <button id="toggle-sidebar" class="md:hidden bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-sm border border-slate-700 transition">
-                <i class="fa-solid fa-bars mr-1"></i> Menu
+
+            <button id="toggle-sidebar" class="md:hidden bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg text-sm border border-slate-700 transition">
+                <i class="fa-solid fa-bars"></i>
             </button>
-            
-            <button onclick="openProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-sm border border-slate-700 flex items-center space-x-2 transition">
-                <span id="current-user-avatar" class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                <span id="current-user-name" class="font-medium truncate max-w-[100px]">Driver</span>
+
+            <button onclick="openProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm border border-slate-700 flex items-center space-x-2 transition">
+                <span id="current-user-avatar" class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0"></span>
+                <span id="current-user-name" class="font-medium truncate max-w-[70px] sm:max-w-[100px]">Driver</span>
                 <i class="fa-solid fa-gear text-xs text-slate-400"></i>
             </button>
         </div>
@@ -207,14 +207,14 @@
             </div>
             <h2 class="text-xl font-bold text-white">Join the Meetup Map</h2>
             <p class="text-sm text-slate-300">
-                Allow live GPS tracking to share your exact location, or click below to enter right away and set your spot manually.
+                Allow live GPS tracking to show your real position on the map, or skip to enter with a placeholder location (Los Angeles) that won't reflect where you actually are.
             </p>
             <div class="pt-2 flex flex-col space-y-2">
                 <button onclick="acceptLiveLocation()" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-3 rounded-xl transition shadow-lg shadow-red-600/30">
                     Allow GPS Tracking
                 </button>
                 <button onclick="bypassLocation()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm py-2.5 rounded-xl transition border border-slate-700">
-                    Skip / Enter App Now
+                    Skip (Use Placeholder Location)
                 </button>
             </div>
         </div>
@@ -418,6 +418,19 @@
             });
         }
 
+        function friendlyGeoError(error) {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    return "Location permission was denied. Enable it for this site in your browser settings, then tap \"Enable GPS\" again.";
+                case error.POSITION_UNAVAILABLE:
+                    return "Your device couldn't determine a location right now. Try again in a moment.";
+                case error.TIMEOUT:
+                    return "Getting your location took too long. Try again.";
+                default:
+                    return "Could not fetch GPS. You're seeing a placeholder location until this is resolved.";
+            }
+        }
+
         window.acceptLiveLocation = function() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -432,12 +445,13 @@
                         pushLocationToServer();
                     },
                     (error) => {
-                        // Fallback if blocked
+                        alert(friendlyGeoError(error));
                         bypassLocation();
                     },
                     { enableHighAccuracy: true, timeout: 8000 }
                 );
             } else {
+                alert("This browser doesn't support GPS location. You're seeing a placeholder location.");
                 bypassLocation();
             }
         };
@@ -460,9 +474,11 @@
                         startLocationTracking();
                         pushLocationToServer();
                     },
-                    (error) => { alert("Could not fetch GPS. Click anywhere on the map to set your location."); },
+                    (error) => { alert(friendlyGeoError(error)); },
                     { enableHighAccuracy: true, timeout: 8000 }
                 );
+            } else {
+                alert("This browser doesn't support GPS location.");
             }
         };
 
@@ -487,9 +503,10 @@
             const btn = document.getElementById('gps-status-btn');
             const txt = document.getElementById('gps-status-text');
             if (active) {
-                btn.className = "hidden sm:flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 transition";
+                btn.className = "flex items-center space-x-1.5 text-xs px-2 sm:px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 transition";
                 txt.textContent = "Live GPS Active";
-                btn.querySelector('span').className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+                txt.className = "hidden sm:inline";
+                btn.querySelector('span').className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0";
             }
         }
 
