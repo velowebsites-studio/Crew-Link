@@ -24,6 +24,21 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
+    <!-- Firebase Config Missing Banner -->
+    <div id="config-banner" class="hidden fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-3">
+            <h2 class="text-lg font-bold text-amber-400"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Firebase Not Configured</h2>
+            <p class="text-sm text-slate-300">CrewLink needs a Firebase project to sync live locations, chat, pins and routes between racers.</p>
+            <ol class="text-sm text-slate-400 list-decimal list-inside space-y-1">
+                <li>Create a project at <span class="text-slate-200">firebase.google.com</span></li>
+                <li>Enable <span class="text-slate-200">Anonymous</span> sign-in under Authentication</li>
+                <li>Create a <span class="text-slate-200">Firestore</span> database</li>
+                <li>Copy your web app config into <code class="text-blue-400">firebaseConfig</code> near the bottom of <code class="text-blue-400">index.html</code></li>
+                <li>Deploy the rules in <code class="text-blue-400">firestore.rules</code></li>
+            </ol>
+        </div>
+    </div>
+
     <!-- Top Navigation Bar -->
     <header class="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between shrink-0 z-30">
         <div class="flex items-center space-x-3">
@@ -65,9 +80,27 @@
                 <button onclick="centerOnMe()" title="Center on my location" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-xl border border-slate-700 backdrop-blur transition flex items-center justify-center w-12 h-12">
                     <i class="fa-solid fa-location-crosshairs text-lg text-red-500"></i>
                 </button>
-                <button onclick="openPinModal()" title="Drop Meetup / Route Pin" class="bg-red-600 hover:bg-red-500 text-white p-3 rounded-full shadow-xl shadow-red-600/30 transition flex items-center justify-center w-12 h-12">
+                <button onclick="toggleDrawRoute()" id="draw-route-btn" title="Draw a Race Route" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-xl border border-slate-700 backdrop-blur transition flex items-center justify-center w-12 h-12">
+                    <i class="fa-solid fa-route text-lg text-blue-400"></i>
+                </button>
+                <button onclick="openPinModal()" title="Drop Meetup Pin" class="bg-red-600 hover:bg-red-500 text-white p-3 rounded-full shadow-xl shadow-red-600/30 transition flex items-center justify-center w-12 h-12">
                     <i class="fa-solid fa-map-pin text-lg"></i>
                 </button>
+            </div>
+
+            <!-- Route Drawing Control Bar -->
+            <div id="route-draw-bar" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-slate-900/95 border border-slate-700 rounded-xl shadow-xl backdrop-blur px-4 py-3 space-y-2 max-w-[92vw]">
+                <div class="text-slate-300 text-xs text-center"><i class="fa-solid fa-hand-pointer mr-1"></i>Tap the map to add waypoints</div>
+                <div class="flex items-center justify-between space-x-3">
+                    <div class="text-slate-200 text-xs whitespace-nowrap">
+                        <span id="route-draw-points">0</span> pts &middot; <span id="route-draw-distance">0.0 mi</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="undoDrawingPoint()" title="Undo last point" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg text-xs border border-slate-700 transition"><i class="fa-solid fa-rotate-left"></i></button>
+                        <button onclick="finishDrawRoute()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"><i class="fa-solid fa-check"></i> Finish</button>
+                        <button onclick="cancelDrawRoute()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs border border-slate-700 transition">Cancel</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -75,14 +108,17 @@
         <div id="sidebar" class="absolute md:relative inset-y-0 right-0 z-20 w-80 bg-slate-900 border-l border-slate-800 flex flex-col transform translate-x-full md:translate-x-0 transition-transform duration-300 shadow-2xl md:shadow-none">
             
             <div class="flex border-b border-slate-800 bg-slate-950/50">
-                <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-sm font-semibold text-red-500 border-b-2 border-red-500 transition">
-                    <i class="fa-solid fa-comments mr-1.5"></i> Crew Chat
+                <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-xs sm:text-sm font-semibold text-red-500 border-b-2 border-red-500 transition">
+                    <i class="fa-solid fa-comments mr-1"></i> Chat
                 </button>
-                <button onclick="switchTab('drivers')" id="tab-drivers" class="flex-1 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
-                    <i class="fa-solid fa-car-side mr-1.5"></i> Drivers (<span id="driver-count">0</span>)
+                <button onclick="switchTab('drivers')" id="tab-drivers" class="flex-1 py-3 text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-car-side mr-1"></i> Drivers (<span id="driver-count">0</span>)
                 </button>
-                <button onclick="switchTab('pins')" id="tab-pins" class="flex-1 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
-                    <i class="fa-solid fa-map-pin mr-1.5"></i> Spots
+                <button onclick="switchTab('routes')" id="tab-routes" class="flex-1 py-3 text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-route mr-1"></i> Routes
+                </button>
+                <button onclick="switchTab('pins')" id="tab-pins" class="flex-1 py-3 text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-map-pin mr-1"></i> Spots
                 </button>
             </div>
 
@@ -103,7 +139,16 @@
                 <div id="drivers-list" class="flex-1 overflow-y-auto space-y-2"></div>
             </div>
 
-            <!-- Tab 3: Pins View -->
+            <!-- Tab 3: Routes View -->
+            <div id="view-routes" class="flex-1 flex flex-col overflow-hidden hidden p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Race Routes</div>
+                    <button onclick="toggleDrawRoute()" class="text-xs text-blue-400 hover:text-blue-300 font-medium">+ Draw Route</button>
+                </div>
+                <div id="routes-list" class="flex-1 overflow-y-auto space-y-2"></div>
+            </div>
+
+            <!-- Tab 4: Pins View -->
             <div id="view-pins" class="flex-1 flex flex-col overflow-hidden hidden p-4">
                 <div class="flex items-center justify-between mb-3">
                     <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Meetups & Waypoints</div>
@@ -202,27 +247,85 @@
         </div>
     </div>
 
+    <!-- Save Route Modal -->
+    <div id="route-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-6 shadow-2xl">
+            <h2 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-route text-blue-400 mr-2"></i> Save Race Route</h2>
+            <p class="text-sm text-slate-400 mb-4">This route will be visible to every racer on the map so they can follow it.</p>
+
+            <form onsubmit="handleCreateRoute(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Route Name</label>
+                    <input type="text" id="route-title" required placeholder="e.g. Coastal Highway Run" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Notes</label>
+                    <textarea id="route-desc" rows="2" placeholder="e.g. Start at the gas station, finish at the pier." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Route Color</label>
+                    <div class="grid grid-cols-6 gap-2 pt-1" id="route-color-picker-grid">
+                        <button type="button" onclick="selectRouteColor('#3b82f6')" class="w-8 h-8 rounded-full bg-blue-500 border-2 border-white ring-2 ring-blue-500/50 route-color-opt" data-color="#3b82f6"></button>
+                        <button type="button" onclick="selectRouteColor('#ef4444')" class="w-8 h-8 rounded-full bg-red-500 border-2 border-transparent route-color-opt" data-color="#ef4444"></button>
+                        <button type="button" onclick="selectRouteColor('#10b981')" class="w-8 h-8 rounded-full bg-emerald-500 border-2 border-transparent route-color-opt" data-color="#10b981"></button>
+                        <button type="button" onclick="selectRouteColor('#f59e0b')" class="w-8 h-8 rounded-full bg-amber-500 border-2 border-transparent route-color-opt" data-color="#f59e0b"></button>
+                        <button type="button" onclick="selectRouteColor('#8b5cf6')" class="w-8 h-8 rounded-full bg-purple-500 border-2 border-transparent route-color-opt" data-color="#8b5cf6"></button>
+                        <button type="button" onclick="selectRouteColor('#ec4899')" class="w-8 h-8 rounded-full bg-pink-500 border-2 border-transparent route-color-opt" data-color="#ec4899"></button>
+                    </div>
+                </div>
+                <div class="text-xs text-slate-500"><span id="route-modal-points">0</span> waypoints &middot; <span id="route-modal-distance">0.0 mi</span></div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeRouteModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition">Cancel</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Save Route</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'crewlink-racing-app';
+        // --- Firebase Setup ---
+        // Replace with your own Firebase project's web config:
+        // Firebase Console -> Project Settings -> General -> Your apps -> SDK setup and configuration.
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_FIREBASE_APP_ID"
+        };
+        const appId = 'crewlink-racing-app';
+        const isFirebaseConfigured = firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY";
+
+        let app, auth, db;
+        if (isFirebaseConfigured) {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } else {
+            document.getElementById('config-banner').classList.remove('hidden');
+        }
 
         let currentUser = null;
         let map = null;
         let myMarker = null;
         let otherMarkers = {};
         let pinMarkers = {};
+        let routeMarkers = {};
         let watchId = null;
         let selectedColor = '#ef4444';
+        let selectedRouteColor = '#3b82f6';
         let userLocation = { lat: 34.0522, lng: -118.2437 }; // Default Los Angeles center
         let clickedMapCoords = null;
+        let isDrawingRoute = false;
+        let drawingPoints = [];
+        let drawingPolyline = null;
+        let drawingWaypointMarkers = [];
 
         let driverProfile = {
             name: "Racer " + Math.floor(Math.random() * 900 + 100),
@@ -257,6 +360,10 @@
             L.control.zoom({ position: 'topright' }).addTo(map);
 
             map.on('click', (e) => {
+                if (isDrawingRoute) {
+                    addDrawingPoint(e.latlng);
+                    return;
+                }
                 clickedMapCoords = e.latlng;
                 openPinModal();
             });
@@ -338,12 +445,10 @@
         }
 
         async function initAuthAndData() {
+            if (!isFirebaseConfigured) return;
+
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
             } catch (err) {
                 console.error("Auth error:", err);
             }
@@ -354,6 +459,7 @@
                 subscribeToLocations();
                 subscribeToChat();
                 subscribeToPins();
+                subscribeToRoutes();
             });
         }
 
@@ -538,6 +644,82 @@
             });
         }
 
+        function subscribeToRoutes() {
+            const routesRef = collection(db, 'artifacts', appId, 'public', 'data', 'routes');
+            onSnapshot(routesRef, (snapshot) => {
+                let routes = [];
+                snapshot.forEach(docSnap => { routes.push({ id: docSnap.id, ...docSnap.data() }); });
+
+                Object.values(routeMarkers).forEach(r => {
+                    if (!map) return;
+                    map.removeLayer(r.line);
+                    map.removeLayer(r.startMarker);
+                    map.removeLayer(r.endMarker);
+                });
+                routeMarkers = {};
+
+                const routesListContainer = document.getElementById('routes-list');
+                routesListContainer.innerHTML = '';
+
+                if (routes.length === 0) {
+                    routesListContainer.innerHTML = `<div class="text-center text-slate-500 py-6 text-xs">No routes yet. Draw one so the crew can follow it!</div>`;
+                    return;
+                }
+
+                routes.forEach(route => {
+                    if (!map || !route.points || route.points.length < 2) return;
+                    const latlngs = route.points.map(p => [p.lat, p.lng]);
+                    const color = route.color || '#3b82f6';
+                    const distance = route.distance || 0;
+
+                    const line = L.polyline(latlngs, { color, weight: 5, opacity: 0.85 }).addTo(map)
+                        .bindPopup(`
+                            <div class="p-1 space-y-1">
+                                <div class="font-bold text-sm" style="color: ${color}">${escapeHtml(route.title)}</div>
+                                <div class="text-xs text-slate-300">${escapeHtml(route.desc || 'No notes')}</div>
+                                <div class="text-[10px] text-slate-400">${distance.toFixed(1)} mi &middot; by ${escapeHtml(route.author)}</div>
+                            </div>
+                        `, { className: 'custom-dark-popup' });
+
+                    const startIcon = L.divIcon({
+                        className: 'custom-route-marker',
+                        html: `<div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 8px ${color}; border: 2px solid white;"><i class="fa-solid fa-flag text-white text-[10px]"></i></div>`,
+                        iconSize: [22, 22], iconAnchor: [11, 11]
+                    });
+                    const endIcon = L.divIcon({
+                        className: 'custom-route-marker',
+                        html: `<div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 8px ${color}; border: 2px solid white;"><i class="fa-solid fa-flag-checkered text-white text-[10px]"></i></div>`,
+                        iconSize: [22, 22], iconAnchor: [11, 11]
+                    });
+
+                    const startMarker = L.marker(latlngs[0], { icon: startIcon }).addTo(map);
+                    const endMarker = L.marker(latlngs[latlngs.length - 1], { icon: endIcon }).addTo(map);
+
+                    routeMarkers[route.id] = { line, startMarker, endMarker };
+
+                    const item = document.createElement('div');
+                    item.className = 'bg-slate-800 border border-slate-700/80 rounded-xl p-3 hover:border-slate-600 transition cursor-pointer';
+                    item.onclick = () => {
+                        map.fitBounds(line.getBounds(), { padding: [40, 40] });
+                        line.openPopup();
+                        if (window.innerWidth < 768) toggleSidebar();
+                    };
+                    item.innerHTML = `
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-semibold text-sm text-white flex items-center"><span class="w-2.5 h-2.5 rounded-full inline-block mr-2" style="background-color: ${color}"></span>${escapeHtml(route.title)}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider bg-slate-900 text-slate-300 border border-slate-700">${distance.toFixed(1)} mi</span>
+                        </div>
+                        <p class="text-xs text-slate-400 line-clamp-2">${escapeHtml(route.desc || 'No notes')}</p>
+                        <div class="text-[10px] text-slate-500 mt-2 flex items-center justify-between">
+                            <span>By ${escapeHtml(route.author)}</span>
+                            <span class="text-blue-400">Follow on map →</span>
+                        </div>
+                    `;
+                    routesListContainer.appendChild(item);
+                });
+            });
+        }
+
         window.handleSendMessage = async function(e) {
             e.preventDefault();
             const input = document.getElementById('chat-input');
@@ -583,6 +765,140 @@
                 console.error("Error creating pin:", err);
             }
         };
+
+        window.toggleDrawRoute = function() {
+            if (isDrawingRoute) {
+                cancelDrawRoute();
+            } else {
+                startDrawRoute();
+            }
+        };
+
+        function startDrawRoute() {
+            if (!map) return;
+            isDrawingRoute = true;
+            drawingPoints = [];
+            document.getElementById('draw-route-btn').classList.add('bg-blue-600', 'shadow-blue-600/30');
+            document.getElementById('draw-route-btn').classList.remove('bg-slate-900/90');
+            document.getElementById('route-draw-bar').classList.remove('hidden');
+            updateDrawingUI();
+        }
+
+        function addDrawingPoint(latlng) {
+            drawingPoints.push(latlng);
+
+            const isFirst = drawingPoints.length === 1;
+            const waypointMarker = L.circleMarker(latlng, {
+                radius: isFirst ? 7 : 5,
+                color: '#fff',
+                weight: 2,
+                fillColor: isFirst ? '#10b981' : '#3b82f6',
+                fillOpacity: 1
+            }).addTo(map);
+            drawingWaypointMarkers.push(waypointMarker);
+
+            if (drawingPolyline) {
+                drawingPolyline.setLatLngs(drawingPoints);
+            } else if (drawingPoints.length > 1) {
+                drawingPolyline = L.polyline(drawingPoints, { color: '#3b82f6', weight: 4, dashArray: '8, 6' }).addTo(map);
+            }
+
+            updateDrawingUI();
+        }
+
+        window.undoDrawingPoint = function() {
+            if (drawingPoints.length === 0) return;
+            drawingPoints.pop();
+            const marker = drawingWaypointMarkers.pop();
+            if (marker) map.removeLayer(marker);
+            if (drawingPolyline) {
+                if (drawingPoints.length > 1) {
+                    drawingPolyline.setLatLngs(drawingPoints);
+                } else {
+                    map.removeLayer(drawingPolyline);
+                    drawingPolyline = null;
+                }
+            }
+            updateDrawingUI();
+        };
+
+        window.cancelDrawRoute = function() {
+            isDrawingRoute = false;
+            drawingPoints = [];
+            drawingWaypointMarkers.forEach(m => map.removeLayer(m));
+            drawingWaypointMarkers = [];
+            if (drawingPolyline) { map.removeLayer(drawingPolyline); drawingPolyline = null; }
+            document.getElementById('draw-route-btn').classList.remove('bg-blue-600', 'shadow-blue-600/30');
+            document.getElementById('draw-route-btn').classList.add('bg-slate-900/90');
+            document.getElementById('route-draw-bar').classList.add('hidden');
+        };
+
+        window.finishDrawRoute = function() {
+            if (drawingPoints.length < 2) {
+                alert("Add at least 2 points to save a route.");
+                return;
+            }
+            document.getElementById('route-modal-points').textContent = drawingPoints.length;
+            document.getElementById('route-modal-distance').textContent = calcRouteDistance(drawingPoints).toFixed(1) + ' mi';
+            document.getElementById('route-modal').classList.remove('hidden');
+        };
+
+        function calcRouteDistance(points) {
+            let meters = 0;
+            for (let i = 1; i < points.length; i++) {
+                meters += L.latLng(points[i - 1]).distanceTo(L.latLng(points[i]));
+            }
+            return meters / 1609.34; // miles
+        }
+
+        window.selectRouteColor = function(color) {
+            selectedRouteColor = color;
+            document.querySelectorAll('.route-color-opt').forEach(btn => {
+                if (btn.getAttribute('data-color') === color) {
+                    btn.classList.add('border-white', 'ring-2', 'ring-blue-500/50');
+                    btn.classList.remove('border-transparent');
+                } else {
+                    btn.classList.remove('border-white', 'ring-2', 'ring-blue-500/50');
+                    btn.classList.add('border-transparent');
+                }
+            });
+        };
+
+        window.handleCreateRoute = async function(e) {
+            e.preventDefault();
+            const title = document.getElementById('route-title').value.trim();
+            const desc = document.getElementById('route-desc').value.trim();
+            if (!title || !currentUser || drawingPoints.length < 2) return;
+
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'routes'), {
+                    title: title,
+                    desc: desc,
+                    color: selectedRouteColor,
+                    points: drawingPoints.map(p => ({ lat: p.lat, lng: p.lng })),
+                    distance: calcRouteDistance(drawingPoints),
+                    author: driverProfile.name,
+                    uid: currentUser.uid,
+                    timestamp: serverTimestamp()
+                });
+                closeRouteModal();
+                cancelDrawRoute();
+                switchTab('routes');
+            } catch (err) {
+                console.error("Error creating route:", err);
+            }
+        };
+
+        window.closeRouteModal = function() {
+            document.getElementById('route-modal').classList.add('hidden');
+            document.getElementById('route-title').value = '';
+            document.getElementById('route-desc').value = '';
+        };
+
+        function updateDrawingUI() {
+            document.getElementById('route-draw-points').textContent = drawingPoints.length;
+            document.getElementById('route-draw-distance').textContent = calcRouteDistance(drawingPoints).toFixed(1) + ' mi';
+        }
 
         window.saveProfile = function(e) {
             e.preventDefault();
@@ -638,12 +954,12 @@
         };
 
         window.switchTab = function(tabName) {
-            ['chat', 'drivers', 'pins'].forEach(t => {
+            ['chat', 'drivers', 'routes', 'pins'].forEach(t => {
                 document.getElementById(`view-${t}`).classList.add('hidden');
-                document.getElementById(`tab-${t}`).className = 'flex-1 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition border-b-2 border-transparent';
+                document.getElementById(`tab-${t}`).className = 'flex-1 py-3 text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 transition border-b-2 border-transparent';
             });
             document.getElementById(`view-${tabName}`).classList.remove('hidden');
-            document.getElementById(`tab-${tabName}`).className = 'flex-1 py-3 text-sm font-semibold text-red-500 border-b-2 border-red-500 transition';
+            document.getElementById(`tab-${tabName}`).className = 'flex-1 py-3 text-xs sm:text-sm font-semibold text-red-500 border-b-2 border-red-500 transition';
         };
 
         window.openProfileModal = () => document.getElementById('profile-modal').classList.remove('hidden');
