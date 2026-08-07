@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Phase 1 - Real-time GPS Tracker</title>
+  
+  <!-- Tailwind CSS for UI -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    
+    #map {
+      height: 100%;
+      width: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* Transition effect for smooth marker movement & rotation */
+    .car-marker {
+      transition: transform 0.25s linear, left 0.3s ease-out, top 0.3s ease-out;
+      transform-origin: center center;
+      will-change: transform, left, top;
+    }
+
+    /* Glassmorphism Styling */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+  </style>
+</head>
+<body class="text-white select-none">
+
+  <!-- Map Container -->
+  <div id="map"></div>
+
+  <!-- HUD Overlay - Top Bar -->
+  <div class="absolute top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
+    
+    <!-- Speedometer Panel -->
+    <div class="glass-panel rounded-2xl px-5 py-3 shadow-2xl pointer-events-auto flex items-center gap-4">
+      <div class="flex flex-col">
+        <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Speed</span>
+        <div class="flex items-baseline gap-1">
+          <span id="speed-value" class="text-3xl font-extrabold text-cyan-400 tracking-tight">0</span>
+          <span id="speed-unit" class="text-xs font-bold text-slate-300">MPH</span>
+        </div>
+      </div>
+      
+      <!-- Unit Toggle Button -->
+      <button id="unit-toggle" class="bg-slate-800/80 hover:bg-slate-700 text-xs px-2.5 py-1.5 rounded-lg border border-slate-600/50 transition-all font-medium active:scale-95">
+        KM/H
+      </button>
+    </div>
+
+    <!-- GPS Status Badge -->
+    <div id="status-badge" class="glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-amber-400 shadow-lg pointer-events-auto">
+      <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+      <span id="status-text">Acquiring live location...</span>
+    </div>
+  </div>
+
+  <!-- Controls Panel - Bottom Right -->
+  <div class="absolute bottom-6 right-4 z-10 flex flex-col gap-3 pointer-events-auto">
+    
+    <!-- Follow Mode Toggle Button -->
+    <button id="btn-follow" class="glass-panel p-3.5 rounded-2xl shadow-xl flex items-center justify-center text-cyan-400 border-cyan-500/50 hover:bg-slate-800 transition-all active:scale-95 group" title="Toggle Follow Mode">
+      <i data-lucide="navigation" class="w-6 h-6 transition-transform group-hover:scale-110"></i>
+    </button>
+
+    <!-- Center on Me Button -->
+    <button id="btn-center" class="glass-panel p-3.5 rounded-2xl shadow-xl flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800 transition-all active:scale-95 group" title="Center on My Location">
+      <i data-lucide="crosshair" class="w-6 h-6 transition-transform group-hover:scale-110"></i>
+    </button>
+  </div>
+
+  <!-- Location Info Box - Bottom Left -->
+  <div class="absolute bottom-6 left-4 z-10 glass-panel px-3.5 py-2.5 rounded-xl text-[11px] font-mono text-slate-400 pointer-events-auto flex flex-col gap-1 max-w-[210px]">
+    <div class="flex justify-between"><span>Lat:</span> <span id="val-lat" class="text-slate-200 font-bold">Acquiring...</span></div>
+    <div class="flex justify-between"><span>Lng:</span> <span id="val-lng" class="text-slate-200 font-bold">Acquiring...</span></div>
+    <div class="flex justify-between"><span>Heading:</span> <span id="val-heading" class="text-slate-200 font-bold">--°</span></div>
+    <div class="flex justify-between"><span>Accuracy:</span> <span id="val-accuracy" class="text-slate-200 font-bold">--</span></div>
+  </div>
+
+  <!-- Permission Modal Fallback -->
+  <div id="permission-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-panel rounded-3xl p-6 max-w-sm text-center flex flex-col items-center gap-4 border border-rose-500/30">
+      <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center">
+        <i data-lucide="map-pin-off" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold text-white">Location Access Needed</h3>
+        <p class="text-xs text-slate-300 mt-1">Please allow browser location access so the map can accurately lock onto your position.</p>
+      </div>
+      <button id="btn-retry-gps" class="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm rounded-xl transition-all">
+        Lock My Location
+      </button>
+    </div>
+  </div>
+
+  <!-- Google Maps API Script -->
+  <script>
+    // Custom Midnight Dark Theme
+    const darkThemeStyle = [
+      { "elementType": "geometry", "stylers": [{ "color": "#1d2c4d" }] },
+      { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
+      { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a3646" }] },
+      { "featureType": "administrative.country", "elementType": "geometry.stroke", "stylers": [{ "color": "#4b687a" }] },
+      { "featureType": "administrative.province", "elementType": "geometry.stroke", "stylers": [{ "color": "#4b687a" }] },
+      { "featureType": "landscape.man_made", "elementType": "geometry.stroke", "stylers": [{ "color": "#334e68" }] },
+      { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#023e58" }] },
+      { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#283d6a" }] },
+      { "featureType": "poi", "elementType": "labels.text.fill", "stylers": [{ "color": "#6f9ba5" }] },
+      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
+      { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#98a5be" }] },
+      { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#2c456b" }] },
+      { "featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [{ "color": "#1f2835" }] },
+      { "featureType": "transit", "elementType": "labels.text.fill", "stylers": [{ "color": "#98a5be" }] },
+      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e1626" }] },
+      { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#4e6d7c" }] }
+    ];
+
+    // Top-down Vehicle SVG Icon
+    const carSvg = `
+      <svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="44" fill="#06b6d4" fill-opacity="0.2"/>
+        <circle cx="50" cy="50" r="38" stroke="#06b6d4" stroke-width="2.5" stroke-dasharray="5 4"/>
+        <g transform="translate(0,0)">
+          <!-- Wheels -->
+          <rect x="25" y="22" width="10" height="18" rx="4" fill="#0f172a" />
+          <rect x="65" y="22" width="10" height="18" rx="4" fill="#0f172a" />
+          <rect x="25" y="60" width="10" height="18" rx="4" fill="#0f172a" />
+          <rect x="65" y="60" width="10" height="18" rx="4" fill="#0f172a" />
+          
+          <!-- Car Body -->
+          <path d="M32 20C32 15 38 10 50 10C62 10 68 15 68 20L72 75C72 82 64 88 50 88C36 88 28 82 28 75L32 20Z" fill="#38bdf8"/>
+          <!-- Front Windshield -->
+          <path d="M36 32C36 28 40 26 50 26C60 26 64 28 64 32L62 42H38L36 32Z" fill="#0f172a" opacity="0.9"/>
+          <!-- Roof -->
+          <path d="M38 45H62L60 62H40L38 45Z" fill="#0284c7"/>
+          <!-- Rear Window -->
+          <path d="M40 65H60L58 70H42L40 65Z" fill="#0f172a" opacity="0.9"/>
+          <!-- Lights -->
+          <circle cx="36" cy="13" r="3.5" fill="#fef08a"/>
+          <circle cx="64" cy="13" r="3.5" fill="#fef08a"/>
+          <rect x="33" y="84" width="8" height="3" fill="#ef4444" rx="1"/>
+          <rect x="59" y="84" width="8" height="3" fill="#ef4444" rx="1"/>
+        </g>
+      </svg>
+    `;
+
+    // State Variables
+    let map = null;
+    let carOverlay = null;
+    let watchId = null;
+    let isFollowMode = true;
+    let unitInMph = true;
+    let currentHeading = 0;
+    let currentLatLng = null;
+
+    // UI Elements
+    const speedValEl = document.getElementById('speed-value');
+    const speedUnitEl = document.getElementById('speed-unit');
+    const unitToggleBtn = document.getElementById('unit-toggle');
+    const btnFollow = document.getElementById('btn-follow');
+    const btnCenter = document.getElementById('btn-center');
+    const statusBadge = document.getElementById('status-badge');
+    const statusText = document.getElementById('status-text');
+    const statusDot = document.getElementById('status-dot');
+    
+    const valLat = document.getElementById('val-lat');
+    const valLng = document.getElementById('val-lng');
+    const valHeading = document.getElementById('val-heading');
+    const valAccuracy = document.getElementById('val-accuracy');
+    const permissionModal = document.getElementById('permission-modal');
+
+    // Initialize Map and locate user
+    function initMap() {
+      // Default initial view centered on US region while acquiring location
+      const initialCenter = { lat: 39.8283, lng: -98.5795 };
+
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: initialCenter,
+        zoom: 4,
+        styles: darkThemeStyle,
+        disableDefaultUI: true,
+        gestureHandling: "greedy"
+      });
+
+      // User manual map pan turns off auto-follow
+      map.addListener('dragstart', () => {
+        setFollowMode(false);
+      });
+
+      // Create car marker overlay
+      createCarMarker(initialCenter);
+
+      // Instantly query user location
+      acquireLiveLocation();
+
+      // Setup compass orientation listener for mobile devices
+      setupDeviceOrientationListener();
+    }
+
+    // Custom Marker Overlay
+    function createCarMarker(initialPos) {
+      class CustomCarOverlay extends google.maps.OverlayView {
+        constructor(pos) {
+          super();
+          this.pos = pos;
+          this.div = null;
+        }
+
+        onAdd() {
+          this.div = document.createElement('div');
+          this.div.style.position = 'absolute';
+          this.div.style.cursor = 'pointer';
+          this.div.className = 'car-marker';
+          this.div.innerHTML = carSvg;
+          
+          const panes = this.getPanes();
+          panes.overlayMouseTarget.appendChild(this.div);
+        }
+
+        draw() {
+          const overlayProjection = this.getProjection();
+          if (!overlayProjection || !this.div) return;
+
+          const point = overlayProjection.fromLatLngToDivPixel(new google.maps.LatLng(this.pos.lat, this.pos.lng));
+          if (point) {
+            this.div.style.left = (point.x - 22) + 'px';
+            this.div.style.top = (point.y - 22) + 'px';
+            this.div.style.transform = `rotate(${currentHeading}deg)`;
+          }
+        }
+
+        setPosition(newPos, heading) {
+          this.pos = newPos;
+          if (heading !== null && heading !== undefined && !isNaN(heading)) {
+            currentHeading = heading;
+          }
+          this.draw();
+        }
+
+        onRemove() {
+          if (this.div && this.div.parentNode) {
+            this.div.parentNode.removeChild(this.div);
+            this.div = null;
+          }
+        }
+      }
+
+      carOverlay = new CustomCarOverlay(initialPos);
+      carOverlay.setMap(map);
+    }
+
+    // Acquire GPS location
+    function acquireLiveLocation() {
+      if (!navigator.geolocation) {
+        updateStatus("GPS Not Supported", "error");
+        return;
+      }
+
+      updateStatus("Acquiring location...", "warning");
+
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      };
+
+      // Get immediate fix
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          permissionModal.classList.add('hidden');
+          handlePositionUpdate(position, true);
+
+          // Watch continuously
+          if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+          watchId = navigator.geolocation.watchPosition(
+            (pos) => handlePositionUpdate(pos, false),
+            handleGpsError,
+            options
+          );
+        },
+        handleGpsError,
+        options
+      );
+    }
+
+    // Process updated position
+    function handlePositionUpdate(position, isFirstFix) {
+      const { latitude, longitude, speed, heading, accuracy } = position.coords;
+      const newLatLng = { lat: latitude, lng: longitude };
+
+      valLat.textContent = latitude.toFixed(5);
+      valLng.textContent = longitude.toFixed(5);
+      valAccuracy.textContent = `±${Math.round(accuracy)}m`;
+
+      updateStatus("Live GPS Locked", "active");
+
+      // Calculate speed
+      updateSpeed(speed);
+
+      // Determine Heading
+      let targetHeading = heading;
+      if ((targetHeading === null || isNaN(targetHeading)) && currentLatLng) {
+        targetHeading = calculateHeading(currentLatLng, newLatLng);
+      }
+
+      if (targetHeading !== null && !isNaN(targetHeading)) {
+        currentHeading = targetHeading;
+        valHeading.textContent = `${Math.round(currentHeading)}°`;
+      }
+
+      // Update marker position
+      if (carOverlay) {
+        carOverlay.setPosition(newLatLng, currentHeading);
+      }
+
+      // Center map
+      if (isFirstFix || isFollowMode) {
+        map.panTo(newLatLng);
+        if (isFirstFix) map.setZoom(18);
+      }
+
+      currentLatLng = newLatLng;
+    }
+
+    // Update Speed display
+    function updateSpeed(mps) {
+      if (mps === null || isNaN(mps) || mps < 0.3) {
+        speedValEl.textContent = "0";
+        return;
+      }
+
+      const speedConverted = unitInMph ? (mps * 2.23694) : (mps * 3.6);
+      speedValEl.textContent = Math.round(speedConverted);
+    }
+
+    // Heading calculation between points
+    function calculateHeading(from, to) {
+      const dLng = (to.lng - from.lng) * Math.PI / 180;
+      const lat1 = from.lat * Math.PI / 180;
+      const lat2 = to.lat * Math.PI / 180;
+
+      const y = Math.sin(dLng) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    // Device orientation for mobile compass
+    function setupDeviceOrientationListener() {
+      if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', (e) => {
+          if (e.alpha !== null && (!speedValEl.textContent || speedValEl.textContent === "0")) {
+            const compassHeading = e.webkitCompassHeading || (360 - e.alpha);
+            if (compassHeading && carOverlay && currentLatLng) {
+              currentHeading = compassHeading;
+              valHeading.textContent = `${Math.round(compassHeading)}°`;
+              carOverlay.setPosition(currentLatLng, currentHeading);
+            }
+          }
+        }, true);
+      }
+    }
+
+    // Handle Geolocation Errors
+    function handleGpsError(err) {
+      console.warn(`GPS Error (${err.code}): ${err.message}`);
+      if (err.code === err.PERMISSION_DENIED) {
+        updateStatus("GPS Permission Denied", "error");
+        permissionModal.classList.remove('hidden');
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        updateStatus("Location Unavailable", "error");
+      } else {
+        updateStatus("Searching GPS...", "warning");
+      }
+    }
+
+    // Update Status Badge UI
+    function updateStatus(text, state) {
+      statusText.textContent = text;
+      if (state === "active") {
+        statusBadge.className = "glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-emerald-400 shadow-lg pointer-events-auto";
+        statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+      } else if (state === "warning") {
+        statusBadge.className = "glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-amber-400 shadow-lg pointer-events-auto";
+        statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse";
+      } else {
+        statusBadge.className = "glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-rose-400 shadow-lg pointer-events-auto";
+        statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-400";
+      }
+    }
+
+    function setFollowMode(enabled) {
+      isFollowMode = enabled;
+      if (isFollowMode) {
+        btnFollow.classList.add('text-cyan-400', 'border-cyan-500/50');
+        btnFollow.classList.remove('text-slate-400');
+        if (currentLatLng && map) map.panTo(currentLatLng);
+      } else {
+        btnFollow.classList.remove('text-cyan-400', 'border-cyan-500/50');
+        btnFollow.classList.add('text-slate-400');
+      }
+    }
+
+    // Button controls
+    btnFollow.addEventListener('click', () => setFollowMode(!isFollowMode));
+
+    btnCenter.addEventListener('click', () => {
+      if (currentLatLng && map) {
+        map.panTo(currentLatLng);
+        map.setZoom(18);
+        setFollowMode(true);
+      } else {
+        acquireLiveLocation();
+      }
+    });
+
+    unitToggleBtn.addEventListener('click', () => {
+      unitInMph = !unitInMph;
+      speedUnitEl.textContent = unitInMph ? "MPH" : "KM/H";
+      unitToggleBtn.textContent = unitInMph ? "KM/H" : "MPH";
+    });
+
+    document.getElementById('btn-retry-gps').addEventListener('click', () => {
+      permissionModal.classList.add('hidden');
+      acquireLiveLocation();
+    });
+
+    // Icons setup
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
+
+  <!-- Google Maps API -->
+  <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
+</body>
+</html>
+
