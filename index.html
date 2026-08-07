@@ -31,11 +31,47 @@
             <p class="text-sm text-slate-300">CrewLink needs a Firebase project to sync live locations, chat, pins and routes between racers.</p>
             <ol class="text-sm text-slate-400 list-decimal list-inside space-y-1">
                 <li>Create a project at <span class="text-slate-200">firebase.google.com</span></li>
-                <li>Enable <span class="text-slate-200">Anonymous</span> sign-in under Authentication</li>
+                <li>Enable <span class="text-slate-200">Email/Password</span> sign-in under Authentication</li>
                 <li>Create a <span class="text-slate-200">Firestore</span> database</li>
                 <li>Copy your web app config into <code class="text-blue-400">firebaseConfig</code> near the bottom of <code class="text-blue-400">index.html</code></li>
                 <li>Deploy the rules in <code class="text-blue-400">firestore.rules</code></li>
             </ol>
+        </div>
+    </div>
+
+    <!-- Login / Sign Up Gate -->
+    <div id="auth-gate" class="hidden fixed inset-0 z-[55] bg-slate-950 flex items-center justify-center p-4">
+        <div class="max-w-sm w-full space-y-6">
+            <div class="text-center space-y-1">
+                <div class="bg-red-600 w-14 h-14 rounded-2xl text-white font-bold text-2xl flex items-center justify-center shadow-lg shadow-red-600/30 mx-auto">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+                <h1 class="font-extrabold text-2xl tracking-wider text-white uppercase italic">Crew<span class="text-red-500">Link</span></h1>
+                <p class="text-sm text-slate-400">Sign in to see the crew on the map</p>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+                <div class="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
+                    <button type="button" onclick="setAuthMode('signin')" id="auth-tab-signin" class="flex-1 py-2 rounded-md text-sm font-semibold bg-red-600 text-white transition">Sign In</button>
+                    <button type="button" onclick="setAuthMode('signup')" id="auth-tab-signup" class="flex-1 py-2 rounded-md text-sm font-semibold text-slate-400 transition">Sign Up</button>
+                </div>
+
+                <form onsubmit="handleAuthSubmit(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Email</label>
+                        <input type="email" id="auth-email" required autocomplete="email" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Password</label>
+                        <input type="password" id="auth-password" required minlength="6" autocomplete="current-password" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                    </div>
+                    <div id="auth-error" class="hidden text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></div>
+                    <button type="submit" id="auth-submit-btn" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-3 rounded-xl transition shadow-lg shadow-red-600/30">
+                        Sign In
+                    </button>
+                </form>
+            </div>
+            <p class="text-center text-xs text-slate-600">Only signed-in racers can see live locations, chat, pins & routes.</p>
         </div>
     </div>
 
@@ -161,7 +197,7 @@
     </div>
 
     <!-- Location Permission Modal with Bypass -->
-    <div id="location-prompt-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div id="location-prompt-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center space-y-4">
             <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/30 text-red-500 text-2xl">
                 <i class="fa-solid fa-location-arrow animate-bounce"></i>
@@ -207,9 +243,14 @@
                         <button type="button" onclick="selectColor('#ec4899')" class="w-8 h-8 rounded-full bg-pink-500 border-2 border-transparent color-opt" data-color="#ec4899"></button>
                     </div>
                 </div>
-                <div class="flex justify-end space-x-2 pt-2">
-                    <button type="button" onclick="closeProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition">Cancel</button>
-                    <button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Save Profile</button>
+                <div class="flex justify-between items-center pt-2">
+                    <button type="button" onclick="handleLogout()" class="text-xs text-red-400 hover:text-red-300 font-medium">
+                        <i class="fa-solid fa-right-from-bracket mr-1"></i>Log Out
+                    </button>
+                    <div class="flex space-x-2">
+                        <button type="button" onclick="closeProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition">Cancel</button>
+                        <button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Save Profile</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -285,7 +326,7 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Setup ---
@@ -444,24 +485,96 @@
             }
         }
 
-        async function initAuthAndData() {
+        let authMode = 'signin';
+        let authReady = false;
+
+        function initAuthAndData() {
             if (!isFirebaseConfigured) return;
 
-            try {
-                await signInAnonymously(auth);
-            } catch (err) {
-                console.error("Auth error:", err);
-            }
-
             onAuthStateChanged(auth, (user) => {
-                if (!user) return;
-                currentUser = user;
-                subscribeToLocations();
-                subscribeToChat();
-                subscribeToPins();
-                subscribeToRoutes();
+                if (user) {
+                    currentUser = user;
+                    document.getElementById('auth-gate').classList.add('hidden');
+                    document.getElementById('location-prompt-modal').classList.remove('hidden');
+
+                    if (!authReady) {
+                        authReady = true;
+                        subscribeToLocations();
+                        subscribeToChat();
+                        subscribeToPins();
+                        subscribeToRoutes();
+                    }
+                } else {
+                    currentUser = null;
+                    document.getElementById('location-prompt-modal').classList.add('hidden');
+                    document.getElementById('auth-gate').classList.remove('hidden');
+                }
             });
         }
+
+        window.setAuthMode = function(mode) {
+            authMode = mode;
+            const signinTab = document.getElementById('auth-tab-signin');
+            const signupTab = document.getElementById('auth-tab-signup');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const activeClass = 'flex-1 py-2 rounded-md text-sm font-semibold bg-red-600 text-white transition';
+            const inactiveClass = 'flex-1 py-2 rounded-md text-sm font-semibold text-slate-400 transition';
+
+            if (mode === 'signin') {
+                signinTab.className = activeClass;
+                signupTab.className = inactiveClass;
+                submitBtn.textContent = 'Sign In';
+                document.getElementById('auth-password').setAttribute('autocomplete', 'current-password');
+            } else {
+                signupTab.className = activeClass;
+                signinTab.className = inactiveClass;
+                submitBtn.textContent = 'Create Account';
+                document.getElementById('auth-password').setAttribute('autocomplete', 'new-password');
+            }
+            document.getElementById('auth-error').classList.add('hidden');
+        };
+
+        window.handleAuthSubmit = async function(e) {
+            e.preventDefault();
+            if (!isFirebaseConfigured) return;
+
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const errorBox = document.getElementById('auth-error');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            errorBox.classList.add('hidden');
+            submitBtn.disabled = true;
+
+            try {
+                if (authMode === 'signin') {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } else {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                }
+            } catch (err) {
+                errorBox.textContent = friendlyAuthError(err);
+                errorBox.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        };
+
+        function friendlyAuthError(err) {
+            const code = err.code || '';
+            if (code.includes('email-already-in-use')) return 'That email already has an account. Try signing in instead.';
+            if (code.includes('invalid-email')) return 'That email address looks invalid.';
+            if (code.includes('weak-password')) return 'Password should be at least 6 characters.';
+            if (code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential')) return 'Incorrect email or password.';
+            if (code.includes('too-many-requests')) return 'Too many attempts. Try again in a bit.';
+            return 'Something went wrong. Please try again.';
+        }
+
+        window.handleLogout = function() {
+            if (!isFirebaseConfigured) return;
+            signOut(auth).then(() => {
+                window.location.reload();
+            });
+        };
 
         async function pushLocationToServer() {
             if (!currentUser || !userLocation) return;

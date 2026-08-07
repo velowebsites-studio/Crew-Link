@@ -6,8 +6,7 @@ service cloud.firestore {
     // CrewLink stores everything under artifacts/{appId}/public/data/{collection}/{docId}
     // collection is one of: locations, chat, pins, routes
     match /artifacts/{appId}/public/data/{collection}/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read, write: if request.auth != null;
     }
   }
 }
