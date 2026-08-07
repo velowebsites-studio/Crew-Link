@@ -1,459 +1,689 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Phase 1 - Real-time GPS Tracker</title>
-  
-  <!-- Tailwind CSS for UI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background-color: #0f172a;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    
-    #map {
-      height: 100%;
-      width: 100%;
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 1;
-    }
-
-    /* Transition effect for smooth marker movement & rotation */
-    .car-marker {
-      transition: transform 0.25s linear, left 0.3s ease-out, top 0.3s ease-out;
-      transform-origin: center center;
-      will-change: transform, left, top;
-    }
-
-    /* Glassmorphism Styling */
-    .glass-panel {
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrewLink - Car Meets & Cruise Map</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+        #map { height: 100%; width: 100%; z-index: 10; }
+        .custom-dark-popup .leaflet-popup-content-wrapper { background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 0.5rem; }
+        .custom-dark-popup .leaflet-popup-tip { background: #1e293b; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
 </head>
-<body class="text-white select-none">
+<body class="h-screen flex flex-col overflow-hidden">
 
-  <!-- Map Container -->
-  <div id="map"></div>
-
-  <!-- HUD Overlay - Top Bar -->
-  <div class="absolute top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
-    
-    <!-- Speedometer Panel -->
-    <div class="glass-panel rounded-2xl px-5 py-3 shadow-2xl pointer-events-auto flex items-center gap-4">
-      <div class="flex flex-col">
-        <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Speed</span>
-        <div class="flex items-baseline gap-1">
-          <span id="speed-value" class="text-3xl font-extrabold text-cyan-400 tracking-tight">0</span>
-          <span id="speed-unit" class="text-xs font-bold text-slate-300">MPH</span>
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between shrink-0 z-30">
+        <div class="flex items-center space-x-3">
+            <div class="bg-red-600 p-2 rounded-lg text-white font-bold text-lg flex items-center justify-center shadow-lg shadow-red-600/30">
+                <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-lg tracking-wider text-white uppercase italic">Crew<span class="text-red-500">Link</span></h1>
+                <p class="text-xs text-slate-400">Live Racing & Cruise Tracker</p>
+            </div>
         </div>
-      </div>
-      
-      <!-- Unit Toggle Button -->
-      <button id="unit-toggle" class="bg-slate-800/80 hover:bg-slate-700 text-xs px-2.5 py-1.5 rounded-lg border border-slate-600/50 transition-all font-medium active:scale-95">
-        KM/H
-      </button>
+
+        <div class="flex items-center space-x-3">
+            <button onclick="requestLiveLocation()" id="gps-status-btn" class="hidden sm:flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition">
+                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="gps-status-text">Enable GPS</span>
+            </button>
+            
+            <button id="toggle-sidebar" class="md:hidden bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-sm border border-slate-700 transition">
+                <i class="fa-solid fa-bars mr-1"></i> Menu
+            </button>
+            
+            <button onclick="openProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-sm border border-slate-700 flex items-center space-x-2 transition">
+                <span id="current-user-avatar" class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                <span id="current-user-name" class="font-medium truncate max-w-[100px]">Driver</span>
+                <i class="fa-solid fa-gear text-xs text-slate-400"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex relative overflow-hidden">
+        
+        <!-- Map Container -->
+        <div class="flex-1 h-full relative">
+            <div id="map"></div>
+
+            <div class="absolute bottom-6 right-6 z-20 flex flex-col space-y-2">
+                <button onclick="centerOnMe()" title="Center on my location" class="bg-slate-900/90 hover:bg-slate-800 text-white p-3 rounded-full shadow-xl border border-slate-700 backdrop-blur transition flex items-center justify-center w-12 h-12">
+                    <i class="fa-solid fa-location-crosshairs text-lg text-red-500"></i>
+                </button>
+                <button onclick="openPinModal()" title="Drop Meetup / Route Pin" class="bg-red-600 hover:bg-red-500 text-white p-3 rounded-full shadow-xl shadow-red-600/30 transition flex items-center justify-center w-12 h-12">
+                    <i class="fa-solid fa-map-pin text-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div id="sidebar" class="absolute md:relative inset-y-0 right-0 z-20 w-80 bg-slate-900 border-l border-slate-800 flex flex-col transform translate-x-full md:translate-x-0 transition-transform duration-300 shadow-2xl md:shadow-none">
+            
+            <div class="flex border-b border-slate-800 bg-slate-950/50">
+                <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-sm font-semibold text-red-500 border-b-2 border-red-500 transition">
+                    <i class="fa-solid fa-comments mr-1.5"></i> Crew Chat
+                </button>
+                <button onclick="switchTab('drivers')" id="tab-drivers" class="flex-1 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-car-side mr-1.5"></i> Drivers (<span id="driver-count">0</span>)
+                </button>
+                <button onclick="switchTab('pins')" id="tab-pins" class="flex-1 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-map-pin mr-1.5"></i> Spots
+                </button>
+            </div>
+
+            <!-- Tab 1: Chat View -->
+            <div id="view-chat" class="flex-1 flex flex-col overflow-hidden">
+                <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 text-sm"></div>
+                <form id="chat-form" onsubmit="handleSendMessage(event)" class="p-3 border-t border-slate-800 bg-slate-900/80 flex items-center space-x-2">
+                    <input type="text" id="chat-input" placeholder="Say something to the crew..." autocomplete="off" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500">
+                    <button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-md shadow-red-600/20">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Tab 2: Drivers View -->
+            <div id="view-drivers" class="flex-1 flex flex-col overflow-hidden hidden p-4">
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Active Crew Members</div>
+                <div id="drivers-list" class="flex-1 overflow-y-auto space-y-2"></div>
+            </div>
+
+            <!-- Tab 3: Pins View -->
+            <div id="view-pins" class="flex-1 flex flex-col overflow-hidden hidden p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Meetups & Waypoints</div>
+                    <button onclick="openPinModal()" class="text-xs text-red-400 hover:text-red-300 font-medium">+ Add Pin</button>
+                </div>
+                <div id="pins-list" class="flex-1 overflow-y-auto space-y-2"></div>
+            </div>
+
+        </div>
     </div>
 
-    <!-- GPS Status Badge -->
-    <div id="status-badge" class="glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-amber-400 shadow-lg pointer-events-auto">
-      <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-      <span id="status-text">Acquiring live location...</span>
+    <!-- Location Permission Modal with Bypass -->
+    <div id="location-prompt-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center space-y-4">
+            <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/30 text-red-500 text-2xl">
+                <i class="fa-solid fa-location-arrow animate-bounce"></i>
+            </div>
+            <h2 class="text-xl font-bold text-white">Join the Meetup Map</h2>
+            <p class="text-sm text-slate-300">
+                Allow live GPS tracking to share your exact location, or click below to enter right away and set your spot manually.
+            </p>
+            <div class="pt-2 flex flex-col space-y-2">
+                <button onclick="acceptLiveLocation()" class="w-full bg-red-600 hover:bg-red-500 text-white font-medium py-3 rounded-xl transition shadow-lg shadow-red-600/30">
+                    Allow GPS Tracking
+                </button>
+                <button onclick="bypassLocation()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm py-2.5 rounded-xl transition border border-slate-700">
+                    Skip / Enter App Now
+                </button>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <!-- Controls Panel - Bottom Right -->
-  <div class="absolute bottom-6 right-4 z-10 flex flex-col gap-3 pointer-events-auto">
-    
-    <!-- Follow Mode Toggle Button -->
-    <button id="btn-follow" class="glass-panel p-3.5 rounded-2xl shadow-xl flex items-center justify-center text-cyan-400 border-cyan-500/50 hover:bg-slate-800 transition-all active:scale-95 group" title="Toggle Follow Mode">
-      <i data-lucide="navigation" class="w-6 h-6 transition-transform group-hover:scale-110"></i>
-    </button>
-
-    <!-- Center on Me Button -->
-    <button id="btn-center" class="glass-panel p-3.5 rounded-2xl shadow-xl flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800 transition-all active:scale-95 group" title="Center on My Location">
-      <i data-lucide="crosshair" class="w-6 h-6 transition-transform group-hover:scale-110"></i>
-    </button>
-  </div>
-
-  <!-- Location Info Box - Bottom Left -->
-  <div class="absolute bottom-6 left-4 z-10 glass-panel px-3.5 py-2.5 rounded-xl text-[11px] font-mono text-slate-400 pointer-events-auto flex flex-col gap-1 max-w-[210px]">
-    <div class="flex justify-between"><span>Lat:</span> <span id="val-lat" class="text-slate-200 font-bold">Acquiring...</span></div>
-    <div class="flex justify-between"><span>Lng:</span> <span id="val-lng" class="text-slate-200 font-bold">Acquiring...</span></div>
-    <div class="flex justify-between"><span>Heading:</span> <span id="val-heading" class="text-slate-200 font-bold">--°</span></div>
-    <div class="flex justify-between"><span>Accuracy:</span> <span id="val-accuracy" class="text-slate-200 font-bold">--</span></div>
-  </div>
-
-  <!-- Permission Modal Fallback -->
-  <div id="permission-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-    <div class="glass-panel rounded-3xl p-6 max-w-sm text-center flex flex-col items-center gap-4 border border-rose-500/30">
-      <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center">
-        <i data-lucide="map-pin-off" class="w-6 h-6"></i>
-      </div>
-      <div>
-        <h3 class="text-lg font-bold text-white">Location Access Needed</h3>
-        <p class="text-xs text-slate-300 mt-1">Please allow browser location access so the map can accurately lock onto your position.</p>
-      </div>
-      <button id="btn-retry-gps" class="w-full py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm rounded-xl transition-all">
-        Lock My Location
-      </button>
+    <!-- Profile Setup Modal -->
+    <div id="profile-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-6 shadow-2xl">
+            <h2 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-user-gear text-red-500 mr-2"></i> Driver Profile</h2>
+            <p class="text-sm text-slate-400 mb-4">Set your nickname and car setup so your crew recognizes you on the map.</p>
+            
+            <form onsubmit="saveProfile(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Nickname / Driver Name</label>
+                    <input type="text" id="profile-name" required placeholder="e.g. TurboTom" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Car Make & Model</label>
+                    <input type="text" id="profile-car" required placeholder="e.g. Nissan GT-R R35" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Marker Color</label>
+                    <div class="grid grid-cols-6 gap-2 pt-1" id="color-picker-grid">
+                        <button type="button" onclick="selectColor('#ef4444')" class="w-8 h-8 rounded-full bg-red-500 border-2 border-white ring-2 ring-red-500/50 color-opt" data-color="#ef4444"></button>
+                        <button type="button" onclick="selectColor('#3b82f6')" class="w-8 h-8 rounded-full bg-blue-500 border-2 border-transparent color-opt" data-color="#3b82f6"></button>
+                        <button type="button" onclick="selectColor('#10b981')" class="w-8 h-8 rounded-full bg-emerald-500 border-2 border-transparent color-opt" data-color="#10b981"></button>
+                        <button type="button" onclick="selectColor('#f59e0b')" class="w-8 h-8 rounded-full bg-amber-500 border-2 border-transparent color-opt" data-color="#f59e0b"></button>
+                        <button type="button" onclick="selectColor('#8b5cf6')" class="w-8 h-8 rounded-full bg-purple-500 border-2 border-transparent color-opt" data-color="#8b5cf6"></button>
+                        <button type="button" onclick="selectColor('#ec4899')" class="w-8 h-8 rounded-full bg-pink-500 border-2 border-transparent color-opt" data-color="#ec4899"></button>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeProfileModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition">Cancel</button>
+                    <button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Save Profile</button>
+                </div>
+            </form>
+        </div>
     </div>
-  </div>
 
-  <!-- Google Maps API Script -->
-  <script>
-    // Custom Midnight Dark Theme
-    const darkThemeStyle = [
-      { "elementType": "geometry", "stylers": [{ "color": "#1d2c4d" }] },
-      { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
-      { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a3646" }] },
-      { "featureType": "administrative.country", "elementType": "geometry.stroke", "stylers": [{ "color": "#4b687a" }] },
-      { "featureType": "administrative.province", "elementType": "geometry.stroke", "stylers": [{ "color": "#4b687a" }] },
-      { "featureType": "landscape.man_made", "elementType": "geometry.stroke", "stylers": [{ "color": "#334e68" }] },
-      { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#023e58" }] },
-      { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#283d6a" }] },
-      { "featureType": "poi", "elementType": "labels.text.fill", "stylers": [{ "color": "#6f9ba5" }] },
-      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
-      { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#98a5be" }] },
-      { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#2c456b" }] },
-      { "featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [{ "color": "#1f2835" }] },
-      { "featureType": "transit", "elementType": "labels.text.fill", "stylers": [{ "color": "#98a5be" }] },
-      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e1626" }] },
-      { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#4e6d7c" }] }
-    ];
+    <!-- Drop Pin Modal -->
+    <div id="pin-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-6 shadow-2xl">
+            <h2 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-map-pin text-red-500 mr-2"></i> Drop Meetup Spot</h2>
+            <p class="text-sm text-slate-400 mb-4">Mark a gas station rendezvous or a checkpoint on the route.</p>
+            
+            <form onsubmit="handleCreatePin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Spot Title</label>
+                    <input type="text" id="pin-title" required placeholder="e.g. Shell Station Meetup" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Category</label>
+                    <select id="pin-type" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                        <option value="gas">⛽ Gas Station Meetup</option>
+                        <option value="meetup">🏁 Main Meetup Spot</option>
+                        <option value="checkpoint">📍 Cruise Checkpoint</option>
+                        <option value="police">⚠️ Police / Hazard Watch</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Details / Instructions</label>
+                    <textarea id="pin-desc" rows="2" placeholder="e.g. Parking lot behind convenience store." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closePinModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition">Cancel</button>
+                    <button type="submit" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Drop Pin</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-    // Top-down Vehicle SVG Icon
-    const carSvg = `
-      <svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="50" cy="50" r="44" fill="#06b6d4" fill-opacity="0.2"/>
-        <circle cx="50" cy="50" r="38" stroke="#06b6d4" stroke-width="2.5" stroke-dasharray="5 4"/>
-        <g transform="translate(0,0)">
-          <!-- Wheels -->
-          <rect x="25" y="22" width="10" height="18" rx="4" fill="#0f172a" />
-          <rect x="65" y="22" width="10" height="18" rx="4" fill="#0f172a" />
-          <rect x="25" y="60" width="10" height="18" rx="4" fill="#0f172a" />
-          <rect x="65" y="60" width="10" height="18" rx="4" fill="#0f172a" />
-          
-          <!-- Car Body -->
-          <path d="M32 20C32 15 38 10 50 10C62 10 68 15 68 20L72 75C72 82 64 88 50 88C36 88 28 82 28 75L32 20Z" fill="#38bdf8"/>
-          <!-- Front Windshield -->
-          <path d="M36 32C36 28 40 26 50 26C60 26 64 28 64 32L62 42H38L36 32Z" fill="#0f172a" opacity="0.9"/>
-          <!-- Roof -->
-          <path d="M38 45H62L60 62H40L38 45Z" fill="#0284c7"/>
-          <!-- Rear Window -->
-          <path d="M40 65H60L58 70H42L40 65Z" fill="#0f172a" opacity="0.9"/>
-          <!-- Lights -->
-          <circle cx="36" cy="13" r="3.5" fill="#fef08a"/>
-          <circle cx="64" cy="13" r="3.5" fill="#fef08a"/>
-          <rect x="33" y="84" width="8" height="3" fill="#ef4444" rx="1"/>
-          <rect x="59" y="84" width="8" height="3" fill="#ef4444" rx="1"/>
-        </g>
-      </svg>
-    `;
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // State Variables
-    let map = null;
-    let carOverlay = null;
-    let watchId = null;
-    let isFollowMode = true;
-    let unitInMph = true;
-    let currentHeading = 0;
-    let currentLatLng = null;
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'crewlink-racing-app';
 
-    // UI Elements
-    const speedValEl = document.getElementById('speed-value');
-    const speedUnitEl = document.getElementById('speed-unit');
-    const unitToggleBtn = document.getElementById('unit-toggle');
-    const btnFollow = document.getElementById('btn-follow');
-    const btnCenter = document.getElementById('btn-center');
-    const statusBadge = document.getElementById('status-badge');
-    const statusText = document.getElementById('status-text');
-    const statusDot = document.getElementById('status-dot');
-    
-    const valLat = document.getElementById('val-lat');
-    const valLng = document.getElementById('val-lng');
-    const valHeading = document.getElementById('val-heading');
-    const valAccuracy = document.getElementById('val-accuracy');
-    const permissionModal = document.getElementById('permission-modal');
+        let currentUser = null;
+        let map = null;
+        let myMarker = null;
+        let otherMarkers = {};
+        let pinMarkers = {};
+        let watchId = null;
+        let selectedColor = '#ef4444';
+        let userLocation = { lat: 34.0522, lng: -118.2437 }; // Default Los Angeles center
+        let clickedMapCoords = null;
 
-    // Initialize Map and locate user
-    function initMap() {
-      // Default initial view centered on US region while acquiring location
-      const initialCenter = { lat: 39.8283, lng: -98.5795 };
+        let driverProfile = {
+            name: "Racer " + Math.floor(Math.random() * 900 + 100),
+            car: "Stock Street Car",
+            color: "#ef4444"
+        };
 
-      map = new google.maps.Map(document.getElementById("map"), {
-        center: initialCenter,
-        zoom: 4,
-        styles: darkThemeStyle,
-        disableDefaultUI: true,
-        gestureHandling: "greedy"
-      });
-
-      // User manual map pan turns off auto-follow
-      map.addListener('dragstart', () => {
-        setFollowMode(false);
-      });
-
-      // Create car marker overlay
-      createCarMarker(initialCenter);
-
-      // Instantly query user location
-      acquireLiveLocation();
-
-      // Setup compass orientation listener for mobile devices
-      setupDeviceOrientationListener();
-    }
-
-    // Custom Marker Overlay
-    function createCarMarker(initialPos) {
-      class CustomCarOverlay extends google.maps.OverlayView {
-        constructor(pos) {
-          super();
-          this.pos = pos;
-          this.div = null;
+        const savedProfile = localStorage.getItem('crewlink_profile');
+        if (savedProfile) {
+            try { driverProfile = JSON.parse(savedProfile); } catch(e) {}
         }
 
-        onAdd() {
-          this.div = document.createElement('div');
-          this.div.style.position = 'absolute';
-          this.div.style.cursor = 'pointer';
-          this.div.className = 'car-marker';
-          this.div.innerHTML = carSvg;
-          
-          const panes = this.getPanes();
-          panes.overlayMouseTarget.appendChild(this.div);
-        }
+        document.getElementById('profile-name').value = driverProfile.name;
+        document.getElementById('profile-car').value = driverProfile.car;
+        selectedColor = driverProfile.color;
+        updateColorPickerUI();
+        document.getElementById('current-user-name').textContent = driverProfile.name;
+        document.getElementById('current-user-avatar').style.backgroundColor = driverProfile.color;
 
-        draw() {
-          const overlayProjection = this.getProjection();
-          if (!overlayProjection || !this.div) return;
-
-          const point = overlayProjection.fromLatLngToDivPixel(new google.maps.LatLng(this.pos.lat, this.pos.lng));
-          if (point) {
-            this.div.style.left = (point.x - 22) + 'px';
-            this.div.style.top = (point.y - 22) + 'px';
-            this.div.style.transform = `rotate(${currentHeading}deg)`;
-          }
-        }
-
-        setPosition(newPos, heading) {
-          this.pos = newPos;
-          if (heading !== null && heading !== undefined && !isNaN(heading)) {
-            currentHeading = heading;
-          }
-          this.draw();
-        }
-
-        onRemove() {
-          if (this.div && this.div.parentNode) {
-            this.div.parentNode.removeChild(this.div);
-            this.div = null;
-          }
-        }
-      }
-
-      carOverlay = new CustomCarOverlay(initialPos);
-      carOverlay.setMap(map);
-    }
-
-    // Acquire GPS location
-    function acquireLiveLocation() {
-      if (!navigator.geolocation) {
-        updateStatus("GPS Not Supported", "error");
-        return;
-      }
-
-      updateStatus("Acquiring location...", "warning");
-
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      };
-
-      // Get immediate fix
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          permissionModal.classList.add('hidden');
-          handlePositionUpdate(position, true);
-
-          // Watch continuously
-          if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-          watchId = navigator.geolocation.watchPosition(
-            (pos) => handlePositionUpdate(pos, false),
-            handleGpsError,
-            options
-          );
-        },
-        handleGpsError,
-        options
-      );
-    }
-
-    // Process updated position
-    function handlePositionUpdate(position, isFirstFix) {
-      const { latitude, longitude, speed, heading, accuracy } = position.coords;
-      const newLatLng = { lat: latitude, lng: longitude };
-
-      valLat.textContent = latitude.toFixed(5);
-      valLng.textContent = longitude.toFixed(5);
-      valAccuracy.textContent = `±${Math.round(accuracy)}m`;
-
-      updateStatus("Live GPS Locked", "active");
-
-      // Calculate speed
-      updateSpeed(speed);
-
-      // Determine Heading
-      let targetHeading = heading;
-      if ((targetHeading === null || isNaN(targetHeading)) && currentLatLng) {
-        targetHeading = calculateHeading(currentLatLng, newLatLng);
-      }
-
-      if (targetHeading !== null && !isNaN(targetHeading)) {
-        currentHeading = targetHeading;
-        valHeading.textContent = `${Math.round(currentHeading)}°`;
-      }
-
-      // Update marker position
-      if (carOverlay) {
-        carOverlay.setPosition(newLatLng, currentHeading);
-      }
-
-      // Center map
-      if (isFirstFix || isFollowMode) {
-        map.panTo(newLatLng);
-        if (isFirstFix) map.setZoom(18);
-      }
-
-      currentLatLng = newLatLng;
-    }
-
-    // Update Speed display
-    function updateSpeed(mps) {
-      if (mps === null || isNaN(mps) || mps < 0.3) {
-        speedValEl.textContent = "0";
-        return;
-      }
-
-      const speedConverted = unitInMph ? (mps * 2.23694) : (mps * 3.6);
-      speedValEl.textContent = Math.round(speedConverted);
-    }
-
-    // Heading calculation between points
-    function calculateHeading(from, to) {
-      const dLng = (to.lng - from.lng) * Math.PI / 180;
-      const lat1 = from.lat * Math.PI / 180;
-      const lat2 = to.lat * Math.PI / 180;
-
-      const y = Math.sin(dLng) * Math.cos(lat2);
-      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-    }
-
-    // Device orientation for mobile compass
-    function setupDeviceOrientationListener() {
-      if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', (e) => {
-          if (e.alpha !== null && (!speedValEl.textContent || speedValEl.textContent === "0")) {
-            const compassHeading = e.webkitCompassHeading || (360 - e.alpha);
-            if (compassHeading && carOverlay && currentLatLng) {
-              currentHeading = compassHeading;
-              valHeading.textContent = `${Math.round(compassHeading)}°`;
-              carOverlay.setPosition(currentLatLng, currentHeading);
+        function initMap(lat, lng) {
+            if (map) {
+                map.setView([lat, lng], 15);
+                return;
             }
-          }
-        }, true);
-      }
-    }
+            map = L.map('map', { zoomControl: false }).setView([lat, lng], 15);
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; CARTO',
+                maxZoom: 19
+            }).addTo(map);
 
-    // Handle Geolocation Errors
-    function handleGpsError(err) {
-      console.warn(`GPS Error (${err.code}): ${err.message}`);
-      if (err.code === err.PERMISSION_DENIED) {
-        updateStatus("GPS Permission Denied", "error");
-        permissionModal.classList.remove('hidden');
-      } else if (err.code === err.POSITION_UNAVAILABLE) {
-        updateStatus("Location Unavailable", "error");
-      } else {
-        updateStatus("Searching GPS...", "warning");
-      }
-    }
+            L.control.zoom({ position: 'topright' }).addTo(map);
 
-    // Update Status Badge UI
-    function updateStatus(text, state) {
-      statusText.textContent = text;
-      if (state === "active") {
-        statusBadge.className = "glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-emerald-400 shadow-lg pointer-events-auto";
-        statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
-      } else if (state === "warning") {
-        statusBadge.className = "glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-amber-400 shadow-lg pointer-events-auto";
-        statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse";
-      } else {
-        statusBadge.className = "glass-panel px-3.5 py-2 rounded-full flex items-center gap-2 text-xs font-semibold text-rose-400 shadow-lg pointer-events-auto";
-        statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-400";
-      }
-    }
+            map.on('click', (e) => {
+                clickedMapCoords = e.latlng;
+                openPinModal();
+            });
+        }
 
-    function setFollowMode(enabled) {
-      isFollowMode = enabled;
-      if (isFollowMode) {
-        btnFollow.classList.add('text-cyan-400', 'border-cyan-500/50');
-        btnFollow.classList.remove('text-slate-400');
-        if (currentLatLng && map) map.panTo(currentLatLng);
-      } else {
-        btnFollow.classList.remove('text-cyan-400', 'border-cyan-500/50');
-        btnFollow.classList.add('text-slate-400');
-      }
-    }
+        window.acceptLiveLocation = function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        document.getElementById('location-prompt-modal').classList.add('hidden');
+                        initMap(userLocation.lat, userLocation.lng);
+                        startLocationTracking();
+                        pushLocationToServer();
+                    },
+                    (error) => {
+                        // Fallback if blocked
+                        bypassLocation();
+                    },
+                    { enableHighAccuracy: true, timeout: 8000 }
+                );
+            } else {
+                bypassLocation();
+            }
+        };
 
-    // Button controls
-    btnFollow.addEventListener('click', () => setFollowMode(!isFollowMode));
+        window.bypassLocation = function() {
+            document.getElementById('location-prompt-modal').classList.add('hidden');
+            initMap(userLocation.lat, userLocation.lng);
+            pushLocationToServer();
+        };
 
-    btnCenter.addEventListener('click', () => {
-      if (currentLatLng && map) {
-        map.panTo(currentLatLng);
-        map.setZoom(18);
-        setFollowMode(true);
-      } else {
-        acquireLiveLocation();
-      }
-    });
+        window.requestLiveLocation = function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        map.setView([userLocation.lat, userLocation.lng], 15);
+                        startLocationTracking();
+                        pushLocationToServer();
+                    },
+                    (error) => { alert("Could not fetch GPS. Click anywhere on the map to set your location."); },
+                    { enableHighAccuracy: true, timeout: 8000 }
+                );
+            }
+        };
 
-    unitToggleBtn.addEventListener('click', () => {
-      unitInMph = !unitInMph;
-      speedUnitEl.textContent = unitInMph ? "MPH" : "KM/H";
-      unitToggleBtn.textContent = unitInMph ? "KM/H" : "MPH";
-    });
+        function startLocationTracking() {
+            if (!navigator.geolocation) return;
+            updateGpsButtonUI(true);
 
-    document.getElementById('btn-retry-gps').addEventListener('click', () => {
-      permissionModal.classList.add('hidden');
-      acquireLiveLocation();
-    });
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    userLocation = {
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude
+                    };
+                    pushLocationToServer();
+                },
+                (err) => { console.warn("GPS watch error:", err); },
+                { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+            );
+        }
 
-    // Icons setup
-    window.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
-    });
-  </script>
+        function updateGpsButtonUI(active) {
+            const btn = document.getElementById('gps-status-btn');
+            const txt = document.getElementById('gps-status-text');
+            if (active) {
+                btn.className = "hidden sm:flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 transition";
+                txt.textContent = "Live GPS Active";
+                btn.querySelector('span').className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+            }
+        }
 
-  <!-- Google Maps API -->
-  <script src="https://maps.googleapis.com/maps/api/js?callback=initMap" async defer></script>
+        async function initAuthAndData() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth error:", err);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (!user) return;
+                currentUser = user;
+                subscribeToLocations();
+                subscribeToChat();
+                subscribeToPins();
+            });
+        }
+
+        async function pushLocationToServer() {
+            if (!currentUser || !userLocation) return;
+            try {
+                const userLocRef = doc(db, 'artifacts', appId, 'public', 'data', 'locations', currentUser.uid);
+                await setDoc(userLocRef, {
+                    uid: currentUser.uid,
+                    name: driverProfile.name,
+                    car: driverProfile.car,
+                    color: driverProfile.color,
+                    lat: userLocation.lat,
+                    lng: userLocation.lng,
+                    timestamp: serverTimestamp()
+                }, { merge: true });
+            } catch (e) {
+                console.error("Error updating location:", e);
+            }
+        }
+
+        function subscribeToLocations() {
+            const locsRef = collection(db, 'artifacts', appId, 'public', 'data', 'locations');
+            onSnapshot(locsRef, (snapshot) => {
+                let activeDrivers = [];
+                snapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (!data.lat || !data.lng) return;
+                    activeDrivers.push(data);
+
+                    if (currentUser && data.uid === currentUser.uid) return;
+
+                    if (otherMarkers[data.uid]) {
+                        otherMarkers[data.uid].setLatLng([data.lat, data.lng]);
+                        otherMarkers[data.uid].getPopup().setContent(`
+                            <div class="p-1">
+                                <div class="font-bold text-sm" style="color: ${data.color || '#ef4444'}">${data.name}</div>
+                                <div class="text-xs text-slate-300"><i class="fa-solid fa-car mr-1"></i>${data.car || 'Street Car'}</div>
+                            </div>
+                        `);
+                    } else if (map) {
+                        const carIcon = L.divIcon({
+                            className: 'custom-car-marker',
+                            html: `<div style="background-color: ${data.color || '#ef4444'}; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${data.color || '#ef4444'}; border: 2px solid white;"><i class="fa-solid fa-car text-white text-xs"></i></div>`,
+                            iconSize: [28, 28],
+                            iconAnchor: [14, 14]
+                        });
+
+                        const marker = L.marker([data.lat, data.lng], { icon: carIcon }).addTo(map)
+                            .bindPopup(`
+                                <div class="p-1">
+                                    <div class="font-bold text-sm" style="color: ${data.color || '#ef4444'}">${data.name}</div>
+                                    <div class="text-xs text-slate-300"><i class="fa-solid fa-car mr-1"></i>${data.car || 'Street Car'}</div>
+                                </div>
+                            `, { className: 'custom-dark-popup' });
+                        
+                        otherMarkers[data.uid] = marker;
+                    }
+                });
+
+                if (currentUser && userLocation && map) {
+                    if (myMarker) {
+                        myMarker.setLatLng([userLocation.lat, userLocation.lng]);
+                    } else {
+                        const myCarIcon = L.divIcon({
+                            className: 'custom-my-marker',
+                            html: `<div style="background-color: ${driverProfile.color}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px ${driverProfile.color}; border: 3px solid white;"><i class="fa-solid fa-flag-checkered text-white text-xs"></i></div>`,
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        });
+                        myMarker = L.marker([userLocation.lat, userLocation.lng], { icon: myCarIcon }).addTo(map)
+                            .bindPopup(`
+                                <div class="p-1">
+                                    <div class="font-bold text-sm text-red-400">You (${driverProfile.name})</div>
+                                    <div class="text-xs text-slate-300"><i class="fa-solid fa-car mr-1"></i>${driverProfile.car}</div>
+                                </div>
+                            `, { className: 'custom-dark-popup' });
+                    }
+                }
+
+                updateDriversList(activeDrivers);
+            });
+        }
+
+        function subscribeToChat() {
+            const chatRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat');
+            onSnapshot(chatRef, (snapshot) => {
+                let messages = [];
+                snapshot.forEach(docSnap => { messages.push({ id: docSnap.id, ...docSnap.data() }); });
+                messages.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                
+                const container = document.getElementById('chat-messages');
+                container.innerHTML = '';
+                
+                if (messages.length === 0) {
+                    container.innerHTML = `<div class="text-center text-slate-500 py-6 text-xs">No messages yet. Say hi to the crew!</div>`;
+                    return;
+                }
+
+                messages.forEach(msg => {
+                    const isMe = currentUser && msg.uid === currentUser.uid;
+                    const div = document.createElement('div');
+                    div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`;
+                    div.innerHTML = `
+                        <div class="flex items-center space-x-1.5 text-xs px-1">
+                            <span class="font-bold text-slate-300">${msg.name}</span>
+                            <span class="text-[10px] text-slate-500">${msg.car || ''}</span>
+                        </div>
+                        <div class="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${isMe ? 'bg-red-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-100 border border-slate-700 rounded-tl-none'}">
+                            ${escapeHtml(msg.text)}
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+                container.scrollTop = container.scrollHeight;
+            });
+        }
+
+        function subscribeToPins() {
+            const pinsRef = collection(db, 'artifacts', appId, 'public', 'data', 'pins');
+            onSnapshot(pinsRef, (snapshot) => {
+                let pins = [];
+                snapshot.forEach(docSnap => { pins.push({ id: docSnap.id, ...docSnap.data() }); });
+
+                Object.values(pinMarkers).forEach(m => map && map.removeLayer(m));
+                pinMarkers = {};
+
+                const pinsListContainer = document.getElementById('pins-list');
+                pinsListContainer.innerHTML = '';
+
+                if (pins.length === 0) {
+                    pinsListContainer.innerHTML = `<div class="text-center text-slate-500 py-6 text-xs">No meetup spots dropped yet. Click on the map to add one!</div>`;
+                    return;
+                }
+
+                pins.forEach(pin => {
+                    let iconHtml = '<i class="fa-solid fa-map-pin text-white"></i>';
+                    let bgCol = 'bg-red-600';
+                    if (pin.type === 'gas') { iconHtml = '<i class="fa-solid fa-gas-pump text-white"></i>'; bgCol = 'bg-amber-600'; }
+                    else if (pin.type === 'meetup') { iconHtml = '<i class="fa-solid fa-flag-checkered text-white"></i>'; bgCol = 'bg-emerald-600'; }
+                    else if (pin.type === 'police') { iconHtml = '<i class="fa-solid fa-triangle-exclamation text-white"></i>'; bgCol = 'bg-purple-600'; }
+
+                    const pinIcon = L.divIcon({
+                        className: 'custom-pin-marker',
+                        html: `<div class="${bgCol} w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white text-xs">${iconHtml}</div>`,
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16]
+                    });
+
+                    if (!map) return;
+                    const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon }).addTo(map)
+                        .bindPopup(`
+                            <div class="p-1 space-y-1">
+                                <div class="font-bold text-sm text-white">${escapeHtml(pin.title)}</div>
+                                <div class="text-xs text-slate-300">${escapeHtml(pin.desc || 'No details')}</div>
+                                <div class="text-[10px] text-red-400 font-medium pt-1">Added by ${escapeHtml(pin.author)}</div>
+                            </div>
+                        `, { className: 'custom-dark-popup' });
+                    
+                    pinMarkers[pin.id] = marker;
+
+                    const item = document.createElement('div');
+                    item.className = 'bg-slate-800 border border-slate-700/80 rounded-xl p-3 hover:border-slate-600 transition cursor-pointer';
+                    item.onclick = () => {
+                        map.setView([pin.lat, pin.lng], 16);
+                        marker.openPopup();
+                        if (window.innerWidth < 768) toggleSidebar();
+                    };
+                    item.innerHTML = `
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-semibold text-sm text-white">${escapeHtml(pin.title)}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider bg-slate-900 text-slate-300 border border-slate-700">${pin.type}</span>
+                        </div>
+                        <p class="text-xs text-slate-400 line-clamp-2">${escapeHtml(pin.desc || 'Meetup checkpoint')}</p>
+                        <div class="text-[10px] text-slate-500 mt-2 flex items-center justify-between">
+                            <span>By ${escapeHtml(pin.author)}</span>
+                            <span class="text-red-400">View on map →</span>
+                        </div>
+                    `;
+                    pinsListContainer.appendChild(item);
+                });
+            });
+        }
+
+        window.handleSendMessage = async function(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text || !currentUser) return;
+
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chat'), {
+                    uid: currentUser.uid,
+                    name: driverProfile.name,
+                    car: driverProfile.car,
+                    text: text,
+                    timestamp: serverTimestamp()
+                });
+                input.value = '';
+            } catch (err) {
+                console.error("Error sending message:", err);
+            }
+        };
+
+        window.handleCreatePin = async function(e) {
+            e.preventDefault();
+            const title = document.getElementById('pin-title').value.trim();
+            const type = document.getElementById('pin-type').value;
+            const desc = document.getElementById('pin-desc').value.trim();
+            const coords = clickedMapCoords || userLocation;
+            if (!title || !currentUser || !coords) return;
+
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'pins'), {
+                    title: title,
+                    type: type,
+                    desc: desc,
+                    lat: coords.lat,
+                    lng: coords.lng,
+                    author: driverProfile.name,
+                    timestamp: serverTimestamp()
+                });
+                closePinModal();
+                clickedMapCoords = null;
+                switchTab('pins');
+            } catch (err) {
+                console.error("Error creating pin:", err);
+            }
+        };
+
+        window.saveProfile = function(e) {
+            e.preventDefault();
+            driverProfile.name = document.getElementById('profile-name').value.trim();
+            driverProfile.car = document.getElementById('profile-car').value.trim();
+            driverProfile.color = selectedColor;
+
+            localStorage.setItem('crewlink_profile', JSON.stringify(driverProfile));
+            document.getElementById('current-user-name').textContent = driverProfile.name;
+            document.getElementById('current-user-avatar').style.backgroundColor = driverProfile.color;
+
+            closeProfileModal();
+            pushLocationToServer();
+        };
+
+        function updateDriversList(drivers) {
+            document.getElementById('driver-count').textContent = drivers.length;
+            const list = document.getElementById('drivers-list');
+            list.innerHTML = '';
+
+            drivers.forEach(driver => {
+                const isMe = currentUser && driver.uid === currentUser.uid;
+                const div = document.createElement('div');
+                div.className = 'bg-slate-800 border border-slate-700/80 rounded-xl p-3 flex items-center justify-between';
+                div.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-3 h-3 rounded-full shrink-0" style="background-color: ${driver.color || '#ef4444'}; box-shadow: 0 0 8px ${driver.color || '#ef4444'}"></div>
+                        <div>
+                            <div class="font-semibold text-sm text-white flex items-center space-x-1.5">
+                                <span>${escapeHtml(driver.name)}</span>
+                                ${isMe ? '<span class="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded border border-red-500/30">You</span>' : ''}
+                            </div>
+                            <div class="text-xs text-slate-400"><i class="fa-solid fa-car mr-1"></i>${escapeHtml(driver.car || 'Street Car')}</div>
+                        </div>
+                    </div>
+                    <button onclick="zoomToDriver(${driver.lat}, ${driver.lng})" class="bg-slate-700 hover:bg-slate-600 text-slate-200 p-2 rounded-lg text-xs transition">
+                        <i class="fa-solid fa-eye"></i>
+                    </button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        window.zoomToDriver = function(lat, lng) {
+            if (map) {
+                map.setView([lat, lng], 16);
+                if (window.innerWidth < 768) toggleSidebar();
+            }
+        };
+
+        window.centerOnMe = function() {
+            if (map && userLocation) map.setView([userLocation.lat, userLocation.lng], 16);
+        };
+
+        window.switchTab = function(tabName) {
+            ['chat', 'drivers', 'pins'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).className = 'flex-1 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition border-b-2 border-transparent';
+            });
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).className = 'flex-1 py-3 text-sm font-semibold text-red-500 border-b-2 border-red-500 transition';
+        };
+
+        window.openProfileModal = () => document.getElementById('profile-modal').classList.remove('hidden');
+        window.closeProfileModal = () => document.getElementById('profile-modal').classList.add('hidden');
+        window.openPinModal = () => document.getElementById('pin-modal').classList.remove('hidden');
+        window.closePinModal = () => {
+            document.getElementById('pin-modal').classList.add('hidden');
+            clickedMapCoords = null;
+        };
+
+        window.selectColor = function(color) {
+            selectedColor = color;
+            updateColorPickerUI();
+        };
+
+        function updateColorPickerUI() {
+            document.querySelectorAll('.color-opt').forEach(btn => {
+                if (btn.getAttribute('data-color') === selectedColor) {
+                    btn.classList.add('border-white', 'ring-2', 'ring-red-500/50');
+                    btn.classList.remove('border-transparent');
+                } else {
+                    btn.classList.remove('border-white', 'ring-2', 'ring-red-500/50');
+                    btn.classList.add('border-transparent');
+                }
+            });
+        }
+
+        const sidebarToggle = document.getElementById('toggle-sidebar');
+        const sidebar = document.getElementById('sidebar');
+        sidebarToggle.onclick = () => sidebar.classList.toggle('translate-x-full');
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        window.onload = () => {
+            initAuthAndData();
+        };
+    </script>
 </body>
 </html>
 
