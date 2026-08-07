@@ -868,7 +868,11 @@
             e.preventDefault();
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
-            if (!text || !currentUser) return;
+            if (!text) return;
+            if (!currentUser) {
+                alert("You need to be signed in to chat. Try refreshing and signing in again.");
+                return;
+            }
 
             try {
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chat'), {
@@ -881,6 +885,7 @@
                 input.value = '';
             } catch (err) {
                 console.error("Error sending message:", err);
+                alert("Couldn't send that message: " + (err.message || "unknown error") + ". Try refreshing and signing in again.");
             }
         };
 
@@ -890,7 +895,15 @@
             const type = document.getElementById('pin-type').value;
             const desc = document.getElementById('pin-desc').value.trim();
             const coords = clickedMapCoords || userLocation;
-            if (!title || !currentUser || !coords) return;
+            if (!title) return;
+            if (!currentUser) {
+                alert("You need to be signed in to drop a pin. Try refreshing and signing in again.");
+                return;
+            }
+            if (!coords) {
+                alert("No location set yet - click a spot on the map first, or allow GPS.");
+                return;
+            }
 
             try {
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'pins'), {
@@ -907,6 +920,7 @@
                 switchTab('pins');
             } catch (err) {
                 console.error("Error creating pin:", err);
+                alert("Couldn't save that pin: " + (err.message || "unknown error") + ". Try refreshing and signing in again.");
             }
         };
 
@@ -1058,10 +1072,21 @@
             e.preventDefault();
             const title = document.getElementById('route-title').value.trim();
             const desc = document.getElementById('route-desc').value.trim();
-            if (!title || !currentUser || drawingPoints.length < 2) return;
+            if (!title) return;
+            if (!currentUser) {
+                alert("You need to be signed in to save a route. Try refreshing and signing in again.");
+                return;
+            }
+            if (drawingPoints.length < 2) {
+                alert("That route lost its waypoints - close this and draw it again.");
+                return;
+            }
 
             const routePoints = snappedRoutePoints || drawingPoints;
             const distanceMiles = snappedRoutePoints ? snappedDistanceMiles : calcRouteDistance(drawingPoints);
+
+            const saveBtn = document.querySelector('#route-modal button[type="submit"]');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
 
             try {
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'routes'), {
@@ -1081,6 +1106,9 @@
                 switchTab('routes');
             } catch (err) {
                 console.error("Error creating route:", err);
+                alert("Couldn't save that route: " + (err.message || "unknown error") + ". Try refreshing and signing in again.");
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Route'; }
             }
         };
 
