@@ -10,11 +10,15 @@ Firebase (Auth + Firestore) for realtime sync.
 
 ## Features
 
+- **Email/password login** — racers create an account or sign in before
+  they can see anything. Live locations, chat, pins, and routes are only
+  visible to signed-in users, both in the UI and enforced by the Firestore
+  security rules.
 - **Live driver locations** — everyone's position updates on the map in
   real time via Firestore.
 - **Crew chat** — a shared chat room for the whole map.
-- **Meetup pins** — drop gas station / meetup / checkpoint / hazard pins
-  that everyone can see.
+- **Meetup pins** — drop gas station / meetup / checkpoint / police-hazard
+  pins that everyone can see.
 - **Race routes** — click "Draw Route" (or the route icon on the map),
   tap the map to lay down waypoints, then save it. The route is drawn as a
   polyline with start/finish flags and is visible to everyone on the map so
@@ -23,11 +27,12 @@ Firebase (Auth + Firestore) for realtime sync.
 ## Setup
 
 CrewLink needs a Firebase project to sync data between racers. Without one,
-the app will still load and show the map, but nothing will sync between
-browsers.
+the app shows a "Firebase Not Configured" banner instead of the login
+screen.
 
 1. Create a project at [firebase.google.com](https://firebase.google.com).
-2. In **Authentication**, enable the **Anonymous** sign-in provider.
+2. In **Authentication**, enable the **Email/Password** sign-in provider
+   (Build -> Authentication -> Sign-in method -> Email/Password -> Enable).
 3. In **Firestore Database**, create a database (production mode is fine).
 4. In **Project Settings -> General -> Your apps**, add a Web app and copy
    its config object.
@@ -35,9 +40,10 @@ browsers.
    the file (in the `<script type="module">` block), and paste your values
    in place of the `YOUR_...` placeholders.
 6. Deploy the security rules in [`firestore.rules`](./firestore.rules) to
-   your project (Firebase Console -> Firestore Database -> Rules, or via
-   the Firebase CLI: `firebase deploy --only firestore:rules`).
+   your project (Firebase Console -> Firestore Database -> Rules -> paste
+   -> Publish, or via the Firebase CLI: `firebase deploy --only firestore:rules`).
 7. Open `index.html` in a browser (or serve it with any static file host).
+   You'll land on a Sign In / Sign Up screen — create an account to get in.
 
 If the config is left as placeholders, the app shows a banner explaining
 what's missing instead of crashing.
@@ -48,6 +54,6 @@ All app data lives under `artifacts/{appId}/public/data/...` in Firestore:
 
 - `locations/{uid}` — each driver's latest lat/lng, name, car, color.
 - `chat/{msgId}` — crew chat messages.
-- `pins/{pinId}` — meetup/checkpoint/hazard pins.
+- `pins/{pinId}` — meetup/gas-station/checkpoint/police-hazard pins.
 - `routes/{routeId}` — race routes: title, notes, color, ordered list of
   `{lat, lng}` waypoints, and distance in miles.
