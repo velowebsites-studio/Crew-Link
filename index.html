@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-        #map { height: 100%; width: 100%; z-index: 10; }
+        #map { height: 100%; width: 100%; position: relative; z-index: 10; isolation: isolate; }
         .custom-dark-popup .leaflet-popup-content-wrapper { background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 0.5rem; }
         .custom-dark-popup .leaflet-popup-tip { background: #1e293b; }
         ::-webkit-scrollbar { width: 6px; }
@@ -79,7 +79,7 @@
     </div>
 
     <!-- Top Navigation Bar -->
-    <header class="bg-slate-900 border-b border-slate-800 px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between shrink-0 z-30 gap-2">
+    <header class="relative bg-slate-900 border-b border-slate-800 px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between shrink-0 z-30 gap-2">
         <div class="flex items-center space-x-2 sm:space-x-3 min-w-0">
             <div class="bg-red-600 p-1.5 sm:p-2 rounded-lg text-white font-bold text-lg flex items-center justify-center shadow-lg shadow-red-600/30 shrink-0">
                 <i class="fa-solid fa-gauge-high"></i>
@@ -136,7 +136,7 @@
                     </div>
                     <div class="flex items-center space-x-2">
                         <button onclick="undoDrawingPoint()" title="Undo last point" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg text-xs border border-slate-700 transition"><i class="fa-solid fa-rotate-left"></i></button>
-                        <button onclick="finishDrawRoute()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"><i class="fa-solid fa-check"></i> Finish</button>
+                        <button onclick="finishDrawRoute()" id="route-finish-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition"><i class="fa-solid fa-check"></i> Finish</button>
                         <button onclick="cancelDrawRoute()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs border border-slate-700 transition">Cancel</button>
                     </div>
                 </div>
@@ -375,6 +375,8 @@
         let drawingPoints = [];
         let drawingPolyline = null;
         let drawingWaypointMarkers = [];
+        let snappedRoutePoints = null;
+        let snappedDistanceMiles = null;
 
         let driverProfile = {
             name: "Racer " + Math.floor(Math.random() * 900 + 100),
@@ -815,7 +817,7 @@
                             <div class="p-1 space-y-1">
                                 <div class="font-bold text-sm" style="color: ${color}">${escapeHtml(route.title)}</div>
                                 <div class="text-xs text-slate-300">${escapeHtml(route.desc || 'No notes')}</div>
-                                <div class="text-[10px] text-slate-400">${distance.toFixed(1)} mi &middot; by ${escapeHtml(route.author)}</div>
+                                <div class="text-[10px] text-slate-400">${distance.toFixed(1)} mi &middot; ${route.roadSnapped ? 'follows roads' : 'straight line'} &middot; by ${escapeHtml(route.author)}</div>
                             </div>
                         `, { className: 'custom-dark-popup' });
 
@@ -916,6 +918,8 @@
             if (!map) return;
             isDrawingRoute = true;
             drawingPoints = [];
+            snappedRoutePoints = null;
+            snappedDistanceMiles = null;
             document.getElementById('draw-route-btn').classList.add('bg-blue-600', 'shadow-blue-600/30');
             document.getElementById('draw-route-btn').classList.remove('bg-slate-900/90');
             document.getElementById('route-draw-bar').classList.remove('hidden');
@@ -963,6 +967,8 @@
         window.cancelDrawRoute = function() {
             isDrawingRoute = false;
             drawingPoints = [];
+            snappedRoutePoints = null;
+            snappedDistanceMiles = null;
             drawingWaypointMarkers.forEach(m => map.removeLayer(m));
             drawingWaypointMarkers = [];
             if (drawingPolyline) { map.removeLayer(drawingPolyline); drawingPolyline = null; }
@@ -971,13 +977,55 @@
             document.getElementById('route-draw-bar').classList.add('hidden');
         };
 
-        window.finishDrawRoute = function() {
+        // Snaps straight-line waypoints to actual road geometry using OSRM's public
+        // routing API (no key required). This is a free demo server intended for
+        // light use - if it's unreachable or rate-limited we fall back to straight lines.
+        async function snapRouteToRoads(points) {
+            const coords = points.map(p => `${p.lng},${p.lat}`).join(';');
+            const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                if (!response.ok) throw new Error('Routing service error');
+                const data = await response.json();
+                if (data.code !== 'Ok' || !data.routes || !data.routes.length) throw new Error('No road route found');
+                const route = data.routes[0];
+                return {
+                    points: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })),
+                    distanceMiles: route.distance / 1609.34
+                };
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        window.finishDrawRoute = async function() {
             if (drawingPoints.length < 2) {
                 alert("Add at least 2 points to save a route.");
                 return;
             }
+
+            const finishBtn = document.getElementById('route-finish-btn');
+            finishBtn.disabled = true;
+            finishBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Routing...';
+
+            snappedRoutePoints = null;
+            snappedDistanceMiles = null;
+            try {
+                const snapped = await snapRouteToRoads(drawingPoints);
+                snappedRoutePoints = snapped.points;
+                snappedDistanceMiles = snapped.distanceMiles;
+                document.getElementById('route-modal-distance').textContent = snapped.distanceMiles.toFixed(1) + ' mi (follows roads)';
+            } catch (err) {
+                console.warn('Road snapping failed, saving a straight-line route instead:', err);
+                document.getElementById('route-modal-distance').textContent = calcRouteDistance(drawingPoints).toFixed(1) + ' mi (straight line - roads unavailable)';
+            } finally {
+                finishBtn.disabled = false;
+                finishBtn.innerHTML = '<i class="fa-solid fa-check"></i> Finish';
+            }
+
             document.getElementById('route-modal-points').textContent = drawingPoints.length;
-            document.getElementById('route-modal-distance').textContent = calcRouteDistance(drawingPoints).toFixed(1) + ' mi';
             document.getElementById('route-modal').classList.remove('hidden');
         };
 
@@ -1008,13 +1056,18 @@
             const desc = document.getElementById('route-desc').value.trim();
             if (!title || !currentUser || drawingPoints.length < 2) return;
 
+            const routePoints = snappedRoutePoints || drawingPoints;
+            const distanceMiles = snappedRoutePoints ? snappedDistanceMiles : calcRouteDistance(drawingPoints);
+
             try {
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'routes'), {
                     title: title,
                     desc: desc,
                     color: selectedRouteColor,
-                    points: drawingPoints.map(p => ({ lat: p.lat, lng: p.lng })),
-                    distance: calcRouteDistance(drawingPoints),
+                    points: routePoints.map(p => ({ lat: p.lat, lng: p.lng })),
+                    waypoints: drawingPoints.map(p => ({ lat: p.lat, lng: p.lng })),
+                    distance: distanceMiles,
+                    roadSnapped: !!snappedRoutePoints,
                     author: driverProfile.name,
                     uid: currentUser.uid,
                     timestamp: serverTimestamp()

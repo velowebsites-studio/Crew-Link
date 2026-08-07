@@ -20,9 +20,11 @@ Firebase (Auth + Firestore) for realtime sync.
 - **Meetup pins** — drop gas station / meetup / checkpoint / police-hazard
   pins that everyone can see.
 - **Race routes** — click "Draw Route" (or the route icon on the map),
-  tap the map to lay down waypoints, then save it. The route is drawn as a
-  polyline with start/finish flags and is visible to everyone on the map so
-  a crew can follow the same course.
+  tap the map to lay down waypoints, then save it. Waypoints are snapped to
+  actual roads via the [OSRM](https://project-osrm.org/) routing API (falls
+  back to a straight line between points if that service is unreachable),
+  drawn as a polyline with start/finish flags, and visible to everyone on
+  the map so a crew can follow the same course.
 
 ## Setup
 
@@ -55,5 +57,6 @@ All app data lives under `artifacts/{appId}/public/data/...` in Firestore:
 - `locations/{uid}` — each driver's latest lat/lng, name, car, color.
 - `chat/{msgId}` — crew chat messages.
 - `pins/{pinId}` — meetup/gas-station/checkpoint/police-hazard pins.
-- `routes/{routeId}` — race routes: title, notes, color, ordered list of
-  `{lat, lng}` waypoints, and distance in miles.
+- `routes/{routeId}` — race routes: title, notes, color, the road-snapped
+  `points` polyline, the original clicked `waypoints`, `roadSnapped` flag,
+  and distance in miles.
