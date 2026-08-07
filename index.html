@@ -36,6 +36,9 @@
                 <li>Copy your web app config into <code class="text-blue-400">firebaseConfig</code> near the bottom of <code class="text-blue-400">index.html</code></li>
                 <li>Deploy the rules in <code class="text-blue-400">firestore.rules</code></li>
             </ol>
+            <button onclick="previewWithoutSync()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm py-2.5 rounded-xl transition border border-slate-700">
+                Preview App (No Sync)
+            </button>
         </div>
     </div>
 
@@ -351,6 +354,11 @@
         } else {
             document.getElementById('config-banner').classList.remove('hidden');
         }
+
+        window.previewWithoutSync = function() {
+            document.getElementById('config-banner').classList.add('hidden');
+            document.getElementById('location-prompt-modal').classList.remove('hidden');
+        };
 
         let currentUser = null;
         let map = null;
