@@ -30,6 +30,11 @@ Firebase (Auth + Firestore) for realtime sync.
   back to a straight line between points if that service is unreachable),
   drawn as a polyline with start/finish flags, and visible to everyone on
   the map so a crew can follow the same course.
+- **Delete your own pins & routes** — a "Delete" button shows up on any
+  pin or route you created (in the sidebar list and in its map popup) so
+  you can clean up meetups/routes that are no longer relevant. Only the
+  original author can delete their own pin or route — the Firestore
+  security rules enforce this server-side, not just in the UI.
 
 ## Setup
 

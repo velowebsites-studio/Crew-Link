@@ -3,10 +3,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // CrewLink stores everything under artifacts/{appId}/public/data/{collection}/{docId}
-    // collection is one of: locations, chat, pins, routes
-    match /artifacts/{appId}/public/data/{collection}/{docId} {
-      allow read, write: if request.auth != null;
+    // CrewLink stores everything under artifacts/{appId}/public/data/{collection}/{docId}.
+    // Every signed-in racer can read all of it (it's a shared crew map), but writes to
+    // pins/routes are only allowed by their own author, matching the delete buttons the
+    // UI only shows to the pin/route's creator - this makes that a real restriction
+    // instead of just a hidden button.
+    match /artifacts/{appId}/public/data/locations/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /artifacts/{appId}/public/data/chat/{msgId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /artifacts/{appId}/public/data/pins/{pinId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    match /artifacts/{appId}/public/data/routes/{routeId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
   }
 }

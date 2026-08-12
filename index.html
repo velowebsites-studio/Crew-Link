@@ -333,7 +333,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Setup ---
         // Replace with your own Firebase project's web config:
@@ -802,15 +802,17 @@
                     });
 
                     if (!map) return;
+                    const isMine = currentUser && pin.uid === currentUser.uid;
                     const marker = L.marker([pin.lat, pin.lng], { icon: pinIcon }).addTo(map)
                         .bindPopup(`
                             <div class="p-1 space-y-1">
                                 <div class="font-bold text-sm text-white">${escapeHtml(pin.title)}</div>
                                 <div class="text-xs text-slate-300">${escapeHtml(pin.desc || 'No details')}</div>
                                 <div class="text-[10px] text-red-400 font-medium pt-1">Added by ${escapeHtml(pin.author)}</div>
+                                ${isMine ? `<button onclick="deletePin('${pin.id}')" class="text-[10px] text-slate-400 hover:text-red-400 pt-1 underline">Delete pin</button>` : ''}
                             </div>
                         `, { className: 'custom-dark-popup' });
-                    
+
                     pinMarkers[pin.id] = marker;
 
                     const item = document.createElement('div');
@@ -828,7 +830,7 @@
                         <p class="text-xs text-slate-400 line-clamp-2">${escapeHtml(pin.desc || 'Meetup checkpoint')}</p>
                         <div class="text-[10px] text-slate-500 mt-2 flex items-center justify-between">
                             <span>By ${escapeHtml(pin.author)}</span>
-                            <span class="text-red-400">View on map →</span>
+                            ${isMine ? `<button onclick="deletePin('${pin.id}', event)" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-trash mr-1"></i>Delete</button>` : '<span class="text-red-400">View on map →</span>'}
                         </div>
                     `;
                     pinsListContainer.appendChild(item);
@@ -863,6 +865,7 @@
                     const latlngs = route.points.map(p => [p.lat, p.lng]);
                     const color = route.color || '#3b82f6';
                     const distance = route.distance || 0;
+                    const isMine = currentUser && route.uid === currentUser.uid;
 
                     const line = L.polyline(latlngs, { color, weight: 5, opacity: 0.85 }).addTo(map)
                         .bindPopup(`
@@ -870,6 +873,7 @@
                                 <div class="font-bold text-sm" style="color: ${color}">${escapeHtml(route.title)}</div>
                                 <div class="text-xs text-slate-300">${escapeHtml(route.desc || 'No notes')}</div>
                                 <div class="text-[10px] text-slate-400">${distance.toFixed(1)} mi &middot; ${route.roadSnapped ? 'follows roads' : 'straight line'} &middot; by ${escapeHtml(route.author)}</div>
+                                ${isMine ? `<button onclick="deleteRoute('${route.id}')" class="text-[10px] text-slate-400 hover:text-red-400 pt-1 underline">Delete route</button>` : ''}
                             </div>
                         `, { className: 'custom-dark-popup' });
 
@@ -904,7 +908,7 @@
                         <p class="text-xs text-slate-400 line-clamp-2">${escapeHtml(route.desc || 'No notes')}</p>
                         <div class="text-[10px] text-slate-500 mt-2 flex items-center justify-between">
                             <span>By ${escapeHtml(route.author)}</span>
-                            <span class="text-blue-400">Follow on map →</span>
+                            ${isMine ? `<button onclick="deleteRoute('${route.id}', event)" class="text-red-400 hover:text-red-300 font-medium"><i class="fa-solid fa-trash mr-1"></i>Delete</button>` : '<span class="text-blue-400">Follow on map →</span>'}
                         </div>
                     `;
                     routesListContainer.appendChild(item);
@@ -964,6 +968,7 @@
                     lat: coords.lat,
                     lng: coords.lng,
                     author: driverProfile.name,
+                    uid: currentUser.uid,
                     timestamp: serverTimestamp()
                 }), 15000, "Saving timed out - check your connection and try again.");
                 closePinModal();
@@ -1217,6 +1222,32 @@
                 list.appendChild(div);
             });
         }
+
+        window.deletePin = async function(pinId, event) {
+            if (event) event.stopPropagation();
+            if (!currentUser) return;
+            if (!confirm("Delete this pin? This can't be undone.")) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'pins', pinId));
+                if (map) map.closePopup();
+            } catch (err) {
+                console.error("Error deleting pin:", err);
+                alert("Couldn't delete that pin: " + (err.message || "unknown error"));
+            }
+        };
+
+        window.deleteRoute = async function(routeId, event) {
+            if (event) event.stopPropagation();
+            if (!currentUser) return;
+            if (!confirm("Delete this route? This can't be undone.")) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'routes', routeId));
+                if (map) map.closePopup();
+            } catch (err) {
+                console.error("Error deleting route:", err);
+                alert("Couldn't delete that route: " + (err.message || "unknown error"));
+            }
+        };
 
         window.zoomToDriver = function(lat, lng) {
             if (map) {
